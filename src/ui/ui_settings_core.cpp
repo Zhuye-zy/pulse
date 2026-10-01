@@ -15,7 +15,10 @@ void MainRenderer::DrawSettingsCore(const WindowViewModel& vm, const D2D1_RECT_F
     };
     auto draw_card=[&](D2D1_RECT_F r) {
         if(r.bottom<=r.top) return;
-        MakeBrush(dc,WithAlpha(theme.surface_card,card_alpha_),brFillInput_); MakeBrush(dc,theme.stroke_card,brStrokeCard_);
+        const bool glass=vm.backdrop_enabled && (vm.window_effect==WindowEffect::Glass ||
+            (vm.wallpaper_look==100 && vm.window_effect!=WindowEffect::None && vm.background_image.empty()));
+        MakeBrush(dc,WithAlpha(theme.surface_card,card_alpha_),brFillInput_);
+        MakeBrush(dc,glass ? WithAlpha(HexColor(0xFFFFFF),vm.dark ? 0.24f : 0.58f) : theme.stroke_card,brStrokeCard_);
         dc->FillRoundedRectangle(D2D1::RoundedRect(r,8*scale_,8*scale_),brFillInput_.get());
         dc->DrawRoundedRectangle(D2D1::RoundedRect(r,8*scale_,8*scale_),brStrokeCard_.get(),1);
     };
@@ -140,7 +143,7 @@ void MainRenderer::DrawSettingsCore(const WindowViewModel& vm, const D2D1_RECT_F
         label(lay.accent_card,l10n::Get(I::SettingsThemeColor),l10n::Get(I::SettingsThemeColorDesc),L"\xE790",lay.accent_picker.left-16*scale_);
         if(vm.settings_bloom) {vm.settings_bloom->SetDisk(lay.accent_picker);vm.settings_bloom->Draw(dc,theme);}
         divider(lay.accent_card);
-        const I effects[]={I::EffectNone,I::EffectAcrylic,I::EffectMica,I::EffectMicaAlt};
+        const I effects[]={I::EffectNone,I::EffectAcrylic,I::EffectMica,I::EffectMicaAlt,I::EffectGlass};
         const I languages[]={I::LanguageSystem,I::LanguageZhCN,I::LanguageEnUS};
         const auto dropdown=[&](D2D1_RECT_F r,D2D1_RECT_F c,I title,I desc,const std::wstring& value,int id) {
             label(r,l10n::Get(title),l10n::Get(desc),id==0 ? L"\xE790" : L"\xE8C1",c.left<r.left+100*scale_ ? r.right-16*scale_ : c.left-12*scale_);
@@ -156,23 +159,27 @@ void MainRenderer::DrawSettingsCore(const WindowViewModel& vm, const D2D1_RECT_F
             const bool enabled=i==0 || compat::ModernWindows();
             const bool selected=i==static_cast<int>(compat::ModernWindows() ? vm.window_effect : WindowEffect::None);
             const bool hovered=enabled && IsHovered(vm,H::SettingsEffect,i);
-            const float tint[]={0.0f,0.22f,0.065f,0.16f};
+            const float tint[]={0.0f,0.22f,0.065f,0.16f,0.09f};
             auto background=BlendOver(WithAlpha(theme.accent,tint[i]),theme.surface_title);
             if(!enabled) background=BlendOver(WithAlpha(theme.surface_sheet,0.6f),background);
             MakeBrush(dc,background,brFillHover_);
             dc->FillRoundedRectangle(D2D1::RoundedRect(preview,6*scale_,6*scale_),brFillHover_.get());
             // A small window silhouette explains the material, not a fake DWM surface.
             dc->PushAxisAlignedClip(preview,D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-            if(i==1 || i==3) {
+            if(i==1 || i==3 || i==4) {
                 MakeBrush(dc,WithAlpha(theme.accent,vm.dark ? 0.18f : 0.13f),brFillHover_);
                 dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(preview.right-18*scale_,preview.top+11*scale_),
                     36*scale_,26*scale_),brFillHover_.get());
             }
             const float inset=10*scale_;
             auto window=D2D1::RectF(preview.left+inset,preview.top+9*scale_,preview.right-inset,preview.bottom-9*scale_);
-            const float plate_alpha=i==1 ? 0.48f : i==3 ? 0.72f : 0.96f;
+            const float plate_alpha=i==4 ? 0.30f : i==1 ? 0.48f : i==3 ? 0.72f : 0.96f;
             MakeBrush(dc,WithAlpha(theme.surface_card,plate_alpha),brFillInput_);
             dc->FillRoundedRectangle(D2D1::RoundedRect(window,3*scale_,3*scale_),brFillInput_.get());
+            if(i==4) {
+                MakeBrush(dc,WithAlpha(HexColor(0xFFFFFF),0.58f),brStrokeCard_);
+                dc->DrawRoundedRectangle(D2D1::RoundedRect(window,3*scale_,3*scale_),brStrokeCard_.get(),scale_);
+            }
             MakeBrush(dc,WithAlpha(theme.text_secondary,0.30f),brTextSecondary_);
             FillRoundedRect(dc,brTextSecondary_.get(),window.left+6*scale_,window.top+6*scale_,
                 (std::min)(18*scale_,(window.right-window.left)*0.18f),2*scale_,scale_);

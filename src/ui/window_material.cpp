@@ -153,6 +153,7 @@ bool IsWindows11OrLater() noexcept {
 DWORD BackdropTypeForEffect(WindowEffect effect) noexcept {
     switch (effect) {
     case WindowEffect::Acrylic: return DWMSBT_TRANSIENTWINDOW;
+    case WindowEffect::Glass:   return DWMSBT_TRANSIENTWINDOW;
     case WindowEffect::Mica:    return DWMSBT_MAINWINDOW;
     case WindowEffect::MicaAlt: return DWMSBT_TABBEDWINDOW;
     default:                    return DWMSBT_NONE;
@@ -363,6 +364,7 @@ void LogWindowMaterial(const char* fmt, ...) {
 const wchar_t* WindowEffectId(WindowEffect effect) noexcept {
     switch (effect) {
     case WindowEffect::Acrylic: return L"acrylic-material";
+    case WindowEffect::Glass:   return L"frosted-glass";
     case WindowEffect::Mica:    return L"mica";
     case WindowEffect::MicaAlt: return L"mica-alt";
     default:                    return L"none";
@@ -372,6 +374,7 @@ const wchar_t* WindowEffectId(WindowEffect effect) noexcept {
 const wchar_t* WindowEffectLabel(WindowEffect effect) noexcept {
     switch (effect) {
     case WindowEffect::Acrylic: return L"\u4e9a\u514b\u529b";
+    case WindowEffect::Glass:   return L"\u6bdb\u73bb\u7483";
     case WindowEffect::Mica:    return L"Mica";
     case WindowEffect::MicaAlt: return L"Mica Alt";
     default:                    return L"\u65e0";
@@ -381,6 +384,7 @@ const wchar_t* WindowEffectLabel(WindowEffect effect) noexcept {
 WindowEffect WindowEffectFromId(std::wstring_view id) noexcept {
     if (id == L"acrylic-material" || id == L"acrylic" || id == L"dwm-blur")
         return WindowEffect::Acrylic;
+    if (id == L"frosted-glass") return WindowEffect::Glass;
     if (id == L"mica") return WindowEffect::Mica;
     if (id == L"mica-alt" || id == L"miac-alt") return WindowEffect::MicaAlt;
     if (id == L"none") return WindowEffect::None;
@@ -788,6 +792,12 @@ DWORD WINAPI WindowMaterial::DecodeWorkerMain(void* parameter) {
 WindowMaterial::Recipe WindowMaterial::RecipeFor(WindowEffect effect, bool dark) noexcept {
     Recipe recipe;
     switch (effect) {
+    case WindowEffect::Glass:
+        recipe.blur_std = 24.0f;
+        recipe.tint_opacity = 0.0f;
+        recipe.luminosity_opacity = 0.35f;
+        recipe.tint = dark ? HexColor(0x545454) : HexColor(0xD3D3D3);
+        break;
     case WindowEffect::Acrylic:
         recipe.blur_std = 30.0f;
         recipe.tint_opacity = 0.0f;

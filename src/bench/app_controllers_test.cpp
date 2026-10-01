@@ -344,6 +344,14 @@ int wmain(int argc, wchar_t** argv) {
     };
     settings_ui.BindUi(prefs, context, index_client, network_client,
                        std::move(ui_callbacks));
+    pulse::app::AppPrefs transparency_prefs;
+    const int effects_before_transparency = applied_effects;
+    passed &= Report("settings transparency reaches and persists at 100 percent",
+        settings_ui.SliderValue(0, 100) && prefs.wallpaper_look == 100 &&
+        transparency_prefs.FromJson(prefs.ToJson()) && transparency_prefs.wallpaper_look == 100 &&
+        applied_effects == effects_before_transparency + 1 &&
+        HasEffect(last_effect, SettingsEffect::WindowMaterial));
+    settings_ui.SliderValue(0, 50);
     settings_ui.WindowEffect(L"mica");
     passed &= Report("settings window effect returns material invalidation",
         prefs.window_effect == L"mica" &&
@@ -372,7 +380,13 @@ int wmain(int argc, wchar_t** argv) {
     settings_ui.AccentChoice(false, 0x2468AC);
     passed &= Report("settings UI controller routes preference commands",
         prefs.window_effect == L"mica-alt" && prefs.row_height == 28 &&
-        prefs.accent_rgb == L"2468AC" && applied_effects == 10);
+        prefs.accent_rgb == L"2468AC" && applied_effects == 12);
+    settings_ui.WindowEffect(L"frosted-glass");
+    pulse::app::AppPrefs glass_prefs;
+    passed &= Report("frosted glass selection persists and updates the window material",
+        prefs.window_effect == L"frosted-glass" &&
+        glass_prefs.FromJson(prefs.ToJson()) && glass_prefs.window_effect == L"frosted-glass" &&
+        HasEffect(last_effect, SettingsEffect::WindowMaterial));
     settings_ui.ToggleUi(5);
     passed &= Report("settings hidden visibility toggle persists and refreshes panes",
         prefs.show_hidden_files && HasEffect(last_effect, SettingsEffect::FileVisibility));

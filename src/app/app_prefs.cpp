@@ -1,5 +1,6 @@
 // app_prefs.cpp — Persist general settings; sync 开机自启 with the Run key.
 #include "app_prefs.h"
+#include "win_e_agent.h"
 #include "session.h"
 #include "../ui/panel_metrics.h"
 #include "../common/json_utils.h"
@@ -303,7 +304,7 @@ bool AppPrefs::FromJson(const std::wstring& json) {
         int legacy = pulse::json::ExtractInt(json, L"wallpaper_look", 1);
         if (legacy < 0 || legacy > 2) legacy = 1;
         wallpaper_look = pulse::json::ExtractInt(json, L"panel_transparency", kLookLevels[legacy]);
-        if (wallpaper_look < 0 || wallpaper_look > 90) wallpaper_look = kLookLevels[legacy];
+        if (wallpaper_look < 0 || wallpaper_look > 100) wallpaper_look = kLookLevels[legacy];
         legacy = pulse::json::ExtractInt(json, L"wallpaper_blur", 1);
         if (legacy < 0 || legacy > 2) legacy = 1;
         wallpaper_blur = pulse::json::ExtractInt(json, L"wallpaper_blur_px", kBlurLevels[legacy]);
@@ -541,8 +542,7 @@ bool AppPrefs::ReadFolderOpen() const {
 }
 
 bool AppPrefs::ApplyFolderOpen(bool on) {
-    open_folders_in_pulse = on;
-    if (!persist) return true;
+    if (!persist) { open_folders_in_pulse = on; return true; }
     const std::wstring exe = ExePath();
     if (exe.empty()) return false;
     bool ok = true;
@@ -563,7 +563,12 @@ bool AppPrefs::ApplyFolderOpen(bool on) {
             }
         }
     }
-    if (changed) NotifyAssocChanged();
+    if (changed && ok) NotifyAssocChanged();
+    if (!ok) {
+        open_folders_in_pulse = ReadFolderOpen();
+        return false;
+    }
+    open_folders_in_pulse = on;
     return ok;
 }
 
@@ -592,49 +597,41 @@ std::wstring ReadRegString(const std::wstring& path, const wchar_t* name) {
 } // namespace
 
 bool AppPrefs::ReadWinE() const {
-    const std::wstring exe = ExePath();
-    if (exe.empty()) return false;
-    const std::wstring command = std::wstring(kWinEVerbKey) + L"\\command";
-    return FolderOpenCommandIsOurs(ReadRegString(command, nullptr), exe);
+    return win_e_agent::Enabled(ExePath());
 }
 
 bool AppPrefs::ApplyWinE(bool on) {
-    take_over_win_e = on;
-    if (!persist) return true;
+    if (!persist) { take_over_win_e = on; return true; }
     const std::wstring exe = ExePath();
     if (exe.empty()) return false;
+    if (!win_e_agent::SetEnabled(exe, on)) {
+        take_over_win_e = ReadWinE();
+        return false;
+    }
+    take_over_win_e = ReadWinE();
     const std::wstring verb = kWinEVerbKey;
     const std::wstring command_key = verb + L"\\command";
     const std::wstring current = ReadRegString(command_key, nullptr);
     const bool ours = FolderOpenCommandIsOurs(current, exe);
-    if (on) {
-        // No arguments: the single-instance forwarder just brings Pulse up.
-        const std::wstring line = L"\"" + exe + L"\"";
-        if (ours && current == line) return true;
-        HKEY h = nullptr;
-        if (RegCreateKeyExW(HKEY_CURRENT_USER, command_key.c_str(), 0, nullptr, 0,
-                            KEY_SET_VALUE, nullptr, &h, nullptr) != ERROR_SUCCESS)
-            return false;
-        bool ok = true;
-        if (!current.empty() && !ours) ok = SetRegString(h, kWinEBackupValue, current) && ok;
-        ok = SetRegString(h, nullptr, line) && ok;
-        // Empty DelegateExecute makes the shell run the command line.
-        ok = SetRegString(h, L"DelegateExecute", L"") && ok;
-        RegCloseKey(h);
-        return ok;
-    }
-    if (!ours) return true;   // someone else's command (or none): leave it alone
+    if (!ours) return true; // someone else's command (or none): leave it alone
     const std::wstring backup = ReadRegString(command_key, kWinEBackupValue);
     if (!backup.empty()) {
         HKEY h = nullptr;
         if (RegOpenKeyExW(HKEY_CURRENT_USER, command_key.c_str(), 0, KEY_SET_VALUE, &h) != ERROR_SUCCESS)
             return false;
-        const bool ok = SetRegString(h, nullptr, backup);
-        RegDeleteValueW(h, kWinEBackupValue);
+        bool ok = SetRegString(h, nullptr, backup);
+        const LONG delegate_deleted = RegDeleteValueW(h, L"DelegateExecute");
+        ok = (delegate_deleted == ERROR_SUCCESS || delegate_deleted == ERROR_FILE_NOT_FOUND) && ok;
+        if (ok) RegDeleteValueW(h, kWinEBackupValue);
         RegCloseKey(h);
-        return ok;
+        if (!ok) {
+            take_over_win_e = ReadWinE();
+            return false;
+        }
+        return true;
     }
-    SHDeleteKeyW(HKEY_CURRENT_USER, verb.c_str());
+    const LONG deleted = SHDeleteKeyW(HKEY_CURRENT_USER, verb.c_str());
+    if (deleted != ERROR_SUCCESS && deleted != ERROR_FILE_NOT_FOUND) return false;
     // Drop the now-empty parents so Explorer falls back to its HKLM defaults.
     const std::wstring shell = verb.substr(0, verb.rfind(L'\\'));
     SHDeleteEmptyKeyW(HKEY_CURRENT_USER, shell.c_str());
@@ -667,6 +664,12 @@ bool AppPrefs::Load() {
         launch_on_startup = ReadLaunchOnStartup();
         open_folders_in_pulse = ReadFolderOpen();
         take_over_win_e = ReadWinE();
+        if (persist) {
+            const std::wstring exe = ExePath();
+            const std::wstring legacy_command = std::wstring(kWinEVerbKey) + L"\\command";
+            if (FolderOpenCommandIsOurs(ReadRegString(legacy_command, nullptr), exe))
+                ApplyWinE(true);
+        }
         return false;
     }
     std::wstring json;
@@ -677,6 +680,13 @@ bool AppPrefs::Load() {
     launch_on_startup = ReadLaunchOnStartup();
     open_folders_in_pulse = ReadFolderOpen();
     take_over_win_e = ReadWinE();
+    if (persist) {
+        const std::wstring exe = ExePath();
+        const std::wstring legacy_command = std::wstring(kWinEVerbKey) + L"\\command";
+        if (FolderOpenCommandIsOurs(ReadRegString(legacy_command, nullptr), exe))
+            ApplyWinE(true);
+        else if (take_over_win_e) win_e_agent::EnsureRunning(exe);
+    }
     // Repair older installs that wrote open\command but left shell default as none.
     if (persist && open_folders_in_pulse)
         ApplyFolderOpen(true);

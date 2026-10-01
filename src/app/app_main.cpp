@@ -36,6 +36,7 @@
 #include "details_meta.h"
 #include "context_menu_prefs.h"
 #include "app_prefs.h"
+#include "win_e_agent.h"
 #include "entry_sort.h"
 #include "saved_search.h"
 #include "search_query.h"
@@ -421,6 +422,15 @@ LRESULT CALLBACK WndProcImpl(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         ProbePinnedNetworks(*s);
         s->ctxMenuPrefs.Load();
         s->appPrefs.Load();
+        if (s->isolatedTest) {
+            wchar_t material[64]{};
+            if (GetEnvironmentVariableW(L"PULSE_TEST_WINDOW_EFFECT", material, ARRAYSIZE(material)) &&
+                ui::WindowEffectFromId(material) != ui::WindowEffect::MicaAlt)
+                s->appPrefs.window_effect = material;
+            wchar_t transparency[8]{};
+            if (GetEnvironmentVariableW(L"PULSE_TEST_TRANSPARENCY", transparency, ARRAYSIZE(transparency)))
+                s->appPrefs.wallpaper_look = std::clamp(_wtoi(transparency), 0, 100);
+        }
         NoteRunningVersion(*s);
         if (!s->shot.active && s->appPrefs.theme_mode >= 0) {
             s->themeOverride = s->appPrefs.theme_mode == 1 ? ui::ThemeMode::Light :
@@ -489,6 +499,9 @@ LRESULT CALLBACK WndProcImpl(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         };
         settings_callbacks.apply_effects = [s](app::SettingsEffect effects) {
             ApplySettingsEffects(*s, effects);
+        };
+        settings_callbacks.show_error = [s, hwnd](const std::wstring& message) {
+            s->notification_toast.ShowError(hwnd, l10n::Get(l10n::StringId::Settings), message);
         };
         settings_callbacks.task_completion = SettingsCompletion(hwnd);
         settings_callbacks.open_path = [hwnd](const std::wstring& path) {
@@ -2058,6 +2071,9 @@ bool SkipSingletonFromArgv() {
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
     pulse::crash::Initialize({pulse::crash::ProcessRole::App, false, {}});
     pulse::compat::EnableDpiAwareness();
+    for (int i = 1; i < __argc; ++i)
+        if (wcscmp(__wargv[i], L"--win-e-agent") == 0)
+            return app::win_e_agent::Run();
     // OLE init (drag & drop + clipboard); implies STA COM init.
     OleInitialize(nullptr);
     for (int i = 1; i < __argc; ++i) {

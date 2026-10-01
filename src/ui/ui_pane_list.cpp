@@ -1184,6 +1184,17 @@ void MainRenderer::DrawSinglePane(const WindowViewModel& vm, const PaneViewModel
     FillRoundedRect(dc, brFillHover_.get(), pane_rect.left, pane_rect.top,
                     pane_rect.right - pane_rect.left, pane_rect.bottom - pane_rect.top,
                     theme.radius_control * scale_);
+    if (vm.backdrop_enabled && (vm.window_effect == WindowEffect::Glass ||
+        (vm.wallpaper_look == 100 && vm.window_effect != WindowEffect::None &&
+         vm.background_image.empty()))) {
+        const float inset = 0.5f * scale_;
+        auto rim = D2D1::RectF(pane_rect.left + inset, pane_rect.top + inset,
+                               pane_rect.right - inset, pane_rect.bottom - inset);
+        MakeBrush(dc, WithAlpha(HexColor(0xFFFFFF), vm.dark ? 0.24f : 0.58f), brStrokeCard_);
+        dc->DrawRoundedRectangle(D2D1::RoundedRect(rim, theme.radius_control * scale_,
+                                                    theme.radius_control * scale_),
+                                 brStrokeCard_.get(), scale_);
+    }
 
     float y = y0;
     const std::wstring& title = pane.header_text;

@@ -2028,6 +2028,14 @@ void ApplyAppWindowChrome(AppState& s) {
         s.backdropActive = true;
         return;
     }
+    // A transparent composition surface alone has no blur behind it. Use
+    // Desktop Acrylic at the clear endpoint so Mica's opaque base is replaced
+    // with an actual translucent, blurred backdrop.
+    if (effect != ui::WindowEffect::None && s.appPrefs.wallpaper_look == 100 &&
+        s.compositor.UsesTransparentComposition() && !ui::IsHighContrast()) {
+        s.backdropActive = ui::ApplyWindowEffect(s.hwnd, ui::WindowEffect::Glass, s.darkMode);
+        return;
+    }
     s.backdropActive = ui::ApplyWindowEffect(s.hwnd, effect, s.darkMode);
 }
 

@@ -97,13 +97,14 @@ void ClearTextWidthCache() {
         const int i = (std::min)(3, static_cast<int>(t));
         return v[i] + (v[i + 1] - v[i]) * (t - static_cast<float>(i));
     }
-    // transparency: 0..90 slider; 25/50/75 reproduce the former
-    // subtle/balanced/vivid tables exactly.
+    // transparency: 0..100 slider; standard materials at 25/50/75 reproduce
+    // the former subtle/balanced/vivid tables exactly.
     inline LayerAlphas ComputeLayerAlphas(bool image_mode, bool backdrop_drawn,
                                           bool backdrop_enabled, bool dark,
-                                          int transparency, int wallpaper_blur) noexcept {
+                                          int transparency, int wallpaper_blur,
+                                          bool glass) noexcept {
         LayerAlphas a;
-        const float t = static_cast<float>(std::clamp(transparency, 0, 90)) / 100.0f;
+        const float t = static_cast<float>(std::clamp(transparency, 0, 100)) / 100.0f;
         if (image_mode) {
             // Decode failure stays opaque rather than exposing the desktop.
             if (!backdrop_drawn) return a;
@@ -127,20 +128,25 @@ void ClearTextWidthCache() {
             return a;
         }
         if (backdrop_drawn) a.title = 0.0f;
-        else if (backdrop_enabled) a.title = dark ? 0.72f : 0.78f;
+        else if (backdrop_enabled && glass) a.title = (dark ? 0.34f : 0.42f) - 0.20f * t;
+        else if (backdrop_enabled) {
+            const float base = dark ? 0.72f : 0.78f;
+            a.title = t <= 0.75f ? base :
+                base + (0.20f - base) * ((t - 0.75f) / 0.25f);
+        }
         if (backdrop_enabled) {
-            // Acrylic / Mica: the slider scales the default (t = .5) opacities.
-            static constexpr float kScale[5] = {1.40f, 1.20f, 1.0f, 0.80f, 0.60f};
+            // The glass preset keeps the native blur visible behind light UI panels.
+            static constexpr float kScale[5] = {1.40f, 1.20f, 1.0f, 0.80f, 0.25f};
             const float k = LerpStops(t, kScale);
-            a.sheet = (std::min)(1.0f, (dark ? 0.55f : 0.60f) * k);
-            a.card = (std::min)(1.0f, (dark ? 0.72f : 0.78f) * k);
+            a.sheet = (std::min)(1.0f, (glass ? (dark ? 0.34f : 0.40f) : (dark ? 0.55f : 0.60f)) * k);
+            a.card = (std::min)(1.0f, (glass ? (dark ? 0.50f : 0.56f) : (dark ? 0.72f : 0.78f)) * k);
         }
         return a;
     }
     inline float WallpaperBlurDip(int wallpaper_blur) noexcept {
         return static_cast<float>(std::clamp(wallpaper_blur, 0, 40));
     }
-    constexpr int kPanelTransparencyMax = 90;
+    constexpr int kPanelTransparencyMax = 100;
     constexpr int kWallpaperBlurMax = 40;
     // Settings slider track inside the three segment cells the layout reserves;
     // the right 50 DIPs hold the value label.

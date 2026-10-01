@@ -13,10 +13,11 @@ enum class WindowEffect {
     None = 0,
     Acrylic,
     Mica,
-    MicaAlt
+    MicaAlt,
+    Glass
 };
 
-inline constexpr int kWindowEffectCount = 4;
+inline constexpr int kWindowEffectCount = 5;
 
 const wchar_t* WindowEffectId(WindowEffect effect) noexcept;
 const wchar_t* WindowEffectLabel(WindowEffect effect) noexcept;

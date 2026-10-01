@@ -25,7 +25,12 @@ void MainRenderer::DrawSettings(const WindowViewModel& vm, const D2D1_RECT_F& re
     const SettingsLayout lay = MakeSettingsLayout(vm, rect, scale_, title_bar_height_,
                                                   status_height_, &painter_);
     D2D1_COLOR_F nav_bg = theme.tab_bg;
-    if (vm.backdrop_enabled) nav_bg.a = vm.dark ? 0.62f : 0.70f;
+    if (vm.backdrop_enabled) {
+        const bool glass = vm.window_effect == WindowEffect::Glass ||
+            (vm.wallpaper_look == 100 && vm.window_effect != WindowEffect::None &&
+             vm.background_image.empty());
+        nav_bg.a = glass ? (std::max)(0.18f, sheet_alpha_ + 0.08f) : (vm.dark ? 0.62f : 0.70f);
+    }
     MakeBrush(dc, nav_bg, brFillHover_);
     FillRect(dc, brFillHover_.get(), lay.nav.left, lay.nav.top,
              lay.nav.right - lay.nav.left, lay.nav.bottom - lay.nav.top);

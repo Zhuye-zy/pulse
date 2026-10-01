@@ -127,7 +127,7 @@ bool HandleSettingsControl(AppState& s,const H& hit) {
     case H::SettingsDropdown: {
         std::vector<ui::FluentMenuItem> items;
         if(hit.index==0) {
-            const I labels[]={I::EffectNone,I::EffectAcrylic,I::EffectMica,I::EffectMicaAlt};
+            const I labels[]={I::EffectNone,I::EffectAcrylic,I::EffectMica,I::EffectMicaAlt,I::EffectGlass};
             for(int i=0;i<ui::kWindowEffectCount;++i) {
                 auto item=Item(i+1,labels[i],s.appPrefs.window_effect==ui::WindowEffectId(static_cast<ui::WindowEffect>(i)));
                 item.enabled=i==0 || compat::ModernWindows();items.push_back(std::move(item));

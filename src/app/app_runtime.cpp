@@ -2332,7 +2332,7 @@ std::wstring TooltipForHover(AppState& s) {
     case R::SettingsEffect: {
         if (s.hoverControlIndex >= 0 && s.hoverControlIndex < ui::kWindowEffectCount) {
             static constexpr I effects[] = {
-                I::EffectNone, I::EffectAcrylic, I::EffectMica, I::EffectMicaAlt,
+                I::EffectNone, I::EffectAcrylic, I::EffectMica, I::EffectMicaAlt, I::EffectGlass,
             };
             wchar_t label[128]{};
             swprintf_s(label, text(I::WindowEffectFormat).c_str(),

@@ -130,6 +130,7 @@ var
   UpgradeStartupCommand, UpgradePreviousExe: String;
   UpgradeFolderCommands: array[0..1] of String;
   UpgradeWinECommand, UpgradeWinEBackup: String;
+  UpgradeWinEAgentCommand: String;
 
 const
   { Win+E / taskbar File Explorer launch verb (AppPrefs::ApplyWinE). }
@@ -172,7 +173,23 @@ begin
       UpgradeWinEBackup) then
       UpgradeWinEBackup := '';
   end;
+  Command := '';
+  if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run',
+    'PulseWinE', Command) and
+    (Pos(Lowercase(PreviousExe), Lowercase(Command)) > 0) and
+    (Pos('--win-e-agent', Lowercase(Command)) > 0) then
+    UpgradeWinEAgentCommand := Command;
   UpgradePrefsCaptured := True;
+end;
+
+function WinEAgentEnabled: Boolean;
+var
+  Command: String;
+begin
+  Result := RegQueryStringValue(HKCU,
+    'Software\Microsoft\Windows\CurrentVersion\Run', 'PulseWinE', Command) and
+    (Pos(Lowercase(ExpandConstant('{app}\pulse.exe')), Lowercase(Command)) > 0) and
+    (Pos('--win-e-agent', Lowercase(Command)) > 0);
 end;
 
 function UpgradeCommand(Command: String): String;
@@ -218,6 +235,9 @@ begin
     if UpgradeWinEBackup <> '' then
       RegWriteStringValue(HKCU, WinEVerbKey + '\command', 'PulseBackup', UpgradeWinEBackup);
   end;
+  if UpgradeWinEAgentCommand <> '' then
+    RegWriteStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run',
+      'PulseWinE', UpgradeCommand(UpgradeWinEAgentCommand));
 end;
 
 function IsChinese: Boolean;
@@ -485,6 +505,7 @@ begin
     (Backup <> '') then
   begin
     RegWriteStringValue(HKCU, WinEVerbKey + '\command', '', Backup);
+    RegDeleteValue(HKCU, WinEVerbKey + '\command', 'DelegateExecute');
     RegDeleteValue(HKCU, WinEVerbKey + '\command', 'PulseBackup');
   end else
   begin
@@ -510,6 +531,11 @@ begin
     { Silent removal must clean up too. The upgrading installer saves and
       restores preferences only after the replacement files are installed. }
     RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Pulse');
+    if WinEAgentEnabled then
+    begin
+      RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'PulseWinE');
+      DeleteFile(ExpandConstant('{userstartup}\Pulse WinE.lnk'));
+    end;
     DeleteFolderOpenOverride('Directory');
     DeleteFolderOpenOverride('Drive');
     DeleteWinEOverride;
@@ -742,10 +768,18 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Code: Integer;
-  IndexExe, Path: String;
+  AgentExe, IndexExe, Path: String;
 begin
   if CurStep <> ssPostInstall then Exit;
   RestoreUpgradePrefs;
+  if WinEAgentEnabled then
+  begin
+    AgentExe := ExpandConstant('{app}\pulse.exe');
+    Code := -1;
+    if not ExecAsOriginalUser(AgentExe, '--win-e-agent', ExpandConstant('{app}'),
+      SW_HIDE, ewNoWait, Code) then
+      Log('Could not start the Win+E agent after installation: ' + IntToStr(Code));
+  end;
   if not WizardIsTaskSelected('indexservice') then Exit;
   IndexExe := ExpandConstant('{app}\Pulse.Index.exe');
   Path := RemoveBackslashUnlessRoot(GetIndexPath(''));

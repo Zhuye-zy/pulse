@@ -610,7 +610,7 @@ struct WindowViewModel {
     bool backdrop_enabled = false;
     WindowEffect window_effect = WindowEffect::MicaAlt;
     std::wstring background_image;
-    int wallpaper_look = 50; // interface transparency 0..90 (AppPrefs::wallpaper_look)
+    int wallpaper_look = 50; // interface transparency 0..100 (AppPrefs::wallpaper_look)
     int wallpaper_blur = 14; // wallpaper blur in DIPs 0..40
     bool safe_mode = false;
     bool address_editing = false;

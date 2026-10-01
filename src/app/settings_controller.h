@@ -89,6 +89,7 @@ public:
         std::function<bool(std::wstring&)> pick_image;
         std::function<bool(std::wstring&, std::wstring_view)> pick_folder;
         std::function<void(SettingsEffect)> apply_effects;
+        std::function<void(const std::wstring&)> show_error;
         SettingsTaskCompletion task_completion;
         std::function<void(const std::wstring&)> open_path;
         std::function<void()> open_diagnostics;
@@ -143,7 +144,7 @@ public:
     void HomeFolder(int action);
     void TextRendering(int index);
     void TrayIconSize(int index);
-    // Settings sliders: 0 interface transparency (0..90), 1 wallpaper blur (0..40).
+    // Settings sliders: 0 interface transparency (0..100), 1 wallpaper blur (0..40).
     // Values apply live while dragging; EndSlider saves once.
     void BeginSlider(int which) noexcept { slider_drag_ = which; }
     int slider_drag() const noexcept { return slider_drag_; }

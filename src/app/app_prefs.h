@@ -55,10 +55,10 @@ struct AppPrefs {
     // system / zh-CN / en-US
     int theme_mode = -1; // legacy session theme, or 0 system / 1 light / 2 dark
     std::wstring language = L"system";
-    // none / acrylic-material / mica / mica-alt  (legacy dwm-blur → acrylic)
+    // none / acrylic-material / mica / mica-alt / frosted-glass
     std::wstring window_effect = L"mica-alt";
     std::wstring background_image;
-    // Interface transparency 0..90 (json panel_transparency). 25/50/75 match the
+    // Interface transparency 0..100 (json panel_transparency). 25/50/75 match the
     // former subtle/balanced/vivid levels; applies to image, Acrylic and Mica.
     int wallpaper_look = 50;
     int wallpaper_blur = 14; // wallpaper blur in DIPs 0..40 (json wallpaper_blur_px)
@@ -98,9 +98,8 @@ struct AppPrefs {
     bool ReadFolderOpen() const;
     bool ApplyFolderOpen(bool on);
 
-    // HKCU "File Explorer" launch verb used by Win+E and the taskbar Explorer
-    // pin ({52205fd8-...}\shell\opennewwindow). A user's previous custom
-    // command is kept as PulseBackup and restored when turned off.
+    // HKCU Run starts a windowless Win+E agent at sign-in. A legacy Explorer
+    // launch verb is migrated on load and restored when this setting turns off.
     bool ReadWinE() const;
     bool ApplyWinE(bool on);
 

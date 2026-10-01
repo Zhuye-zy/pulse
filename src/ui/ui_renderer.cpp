@@ -494,8 +494,11 @@ void MainRenderer::Render(const WindowViewModel& vm, const D2D1_RECT_F& rect,
             dc, rect, vm.window_effect, vm.dark,
             (vm.window_effect == WindowEffect::None) ? std::wstring{} : vm.background_image);
     }
+    const bool glass = vm.window_effect == WindowEffect::Glass ||
+        (vm.wallpaper_look == 100 && vm.window_effect != WindowEffect::None &&
+         vm.background_image.empty());
     const LayerAlphas layers = ComputeLayerAlphas(image_mode, backdrop_drawn,
-        vm.backdrop_enabled, vm.dark, vm.wallpaper_look, vm.wallpaper_blur);
+        vm.backdrop_enabled, vm.dark, vm.wallpaper_look, vm.wallpaper_blur, glass);
     if (!backdrop_drawn && !vm.backdrop_enabled) {
         // Lower pane opacity must reveal the theme canvas when no material or
         // wallpaper exists, instead of exposing an unpainted transparent base.
@@ -775,8 +778,11 @@ void MainRenderer::DrawTitleBar(const WindowViewModel& vm, const D2D1_RECT_F& re
             MakeBrush(dc, WithAlpha(theme.surface_sheet, sheet_alpha_), brFillSelected_);
             FillChromeTab(dc, brFillSelected_.get(), tabRc, shape);
         } else if (active) {
-            // A solid light plate remains identifiable over pale chrome and wallpapers.
-            MakeBrush(dc, vm.dark ? WithAlpha(theme.surface_sheet, sheet_alpha_) : HexColor(0xFFFFFF), brFillSelected_);
+            // The glass tab joins the translucent sheet instead of covering it.
+            const bool glass = vm.window_effect == WindowEffect::Glass ||
+                (vm.wallpaper_look == 100 && vm.window_effect != WindowEffect::None &&
+                 vm.background_image.empty());
+            MakeBrush(dc, vm.dark || glass ? WithAlpha(theme.surface_sheet, sheet_alpha_) : HexColor(0xFFFFFF), brFillSelected_);
             FillChromeTab(dc, brFillSelected_.get(), tabRc, shape);
         } else {
             // Grouped tabs get a tinted body; ungrouped keep the stock look.

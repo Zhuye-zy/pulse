@@ -254,7 +254,7 @@ void SettingsController::SaveAndApply(SettingsEffect effect) const {
 void SettingsController::WindowEffect(std::wstring_view effect_id) {
     if (!compat::ModernWindows() && effect_id != L"none") return;
     static constexpr std::wstring_view ids[] = {
-        L"none", L"acrylic-material", L"mica", L"mica-alt"
+        L"none", L"acrylic-material", L"mica", L"mica-alt", L"frosted-glass"
     };
     if (!prefs_ || prefs_->window_effect == effect_id ||
         std::find(std::begin(ids), std::end(ids), effect_id) == std::end(ids)) return;
@@ -342,7 +342,7 @@ bool SettingsController::SliderValue(int which, int value) {
     if (!prefs_ || which < 0 || which > 1) return false;
     const bool snap = GetKeyState(VK_SHIFT) >= 0;
     int& target = which == 0 ? prefs_->wallpaper_look : prefs_->wallpaper_blur;
-    value = std::clamp(value, 0, which == 0 ? 90 : 40);
+    value = std::clamp(value, 0, which == 0 ? 100 : 40);
     if (snap) {
         static constexpr int kLook[] = {25, 50, 75};
         static constexpr int kBlur[] = {14, 28};
@@ -353,7 +353,9 @@ bool SettingsController::SliderValue(int which, int value) {
         }
     }
     if (target == value) return false;
+    const bool clear_transition = which == 0 && ((target == 100) != (value == 100));
     target = value;
+    if (clear_transition) Apply(SettingsEffect::WindowMaterial);
     return true;
 }
 
@@ -444,7 +446,8 @@ void SettingsController::ToggleUi(int index) {
         prefs_->keep_running_on_close = !prefs_->keep_running_on_close;
         SaveAndApply(SettingsEffect::TrayVisibility);
     } else if (index == 3) {
-        prefs_->ApplyFolderOpen(!prefs_->open_folders_in_pulse);
+        if (!prefs_->ApplyFolderOpen(!prefs_->open_folders_in_pulse) && ui_.show_error)
+            ui_.show_error(l10n::Get(l10n::StringId::SettingsShellRegisterFailed));
         SaveAndApply(SettingsEffect::None);
     } else if (index == 4) {
         prefs_->show_status_performance = !prefs_->show_status_performance;
@@ -459,7 +462,8 @@ void SettingsController::ToggleUi(int index) {
         prefs_->show_pinned_tab_names = !prefs_->show_pinned_tab_names;
         SaveAndApply(SettingsEffect::None);
     } else if (index == 20) {
-        prefs_->ApplyWinE(!prefs_->take_over_win_e);
+        if (!prefs_->ApplyWinE(!prefs_->take_over_win_e) && ui_.show_error)
+            ui_.show_error(l10n::Get(l10n::StringId::SettingsShellRegisterFailed));
         SaveAndApply(SettingsEffect::None);
     } else if (index == 21) {
         // shell_tag_menu.cpp installs/removes the HKCU verbs on the next UI tick.

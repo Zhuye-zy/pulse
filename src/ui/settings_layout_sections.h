@@ -25,8 +25,8 @@ float LayoutSettingsGeneral(SettingsLayout& l, const WindowViewModel& vm, float 
         right-16*scale,l.accent_card.top+(96*scale+picker)/2);
     // The tiles reuse SettingsEffect's existing hit regions and controller.
     // A single tile selector avoids duplicate controls for the same setting.
-    const int effect_columns = right-left < 440*scale ? 2 : 4;
-    const int effect_rows = kWindowEffectCount/effect_columns;
+    const int effect_columns = right-left < 440*scale ? 2 : right-left < 760*scale ? 3 : 5;
+    const int effect_rows = (kWindowEffectCount + effect_columns - 1) / effect_columns;
     const float effect_top = 66.0f;
     l.effect_card=row(effect_top+82.0f*effect_rows+12.0f);
     l.effect_choice = {};
