@@ -143,6 +143,21 @@ void ShowSidebarSectionMenu(AppState& s, int section, POINT screen_pt) {
     hide.command = kHideSection;
     hide.text = l10n::Get(I::SidebarHideSection);
     items.push_back(std::move(hide));
+    // #80: hidden sections come back from any section menu too, not only from
+    // the empty space below the sections, which a full sidebar may not have.
+    ui::FluentMenuItem restore;
+    for (int id : app::NormalizeSidebarOrder(s.sidebarOrder)) {
+        if (((s.sidebarHiddenMask >> id) & 1u) == 0) continue;
+        ui::FluentMenuItem item;
+        item.command = kToggleBase + id;
+        item.text = SectionTitle(id);
+        restore.children.push_back(std::move(item));
+    }
+    if (!restore.children.empty()) {
+        items.back().separator_after = true;
+        restore.text = l10n::Get(I::SidebarShowHidden);
+        items.push_back(std::move(restore));
+    }
 
     const int command = s.menu->TrackPopup(screen_pt, std::move(items));
     if (command >= kBuiltinBase &&
@@ -154,6 +169,9 @@ void ShowSidebarSectionMenu(AppState& s, int section, POINT screen_pt) {
         s.sidebarCollapsedMask &= ~(1u << section);
     } else if (command == kHideSection) {
         s.sidebarHiddenMask |= 1u << section;
+    } else if (command >= kToggleBase && command < kToggleBase + kSectionCount) {
+        if (((s.sidebarHiddenMask >> (command - kToggleBase)) & 1u) != 0)
+            ToggleSidebarSection(s, command - kToggleBase);
     } else {
         return;
     }

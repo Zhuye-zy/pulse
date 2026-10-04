@@ -15,6 +15,7 @@
 #include "name_highlight.h"
 #include "preview_handler_host.h"
 #include "ui_motion.h"
+#include "link_pill.h"
 #include "ui_view_morph.h"
 #include "group_wheel.h"
 #include "details_column_set.h"
@@ -69,6 +70,8 @@ struct TabGroupView {
 };
 
 struct ListEntryView {
+    bool is_link = false;
+    std::wstring link_destination;
     std::wstring name;
     std::wstring size_text;
     std::wstring date_text;
@@ -83,6 +86,7 @@ struct ListEntryView {
     uint64_t accessed_value = 0;
     bool is_dir = false;
     bool is_reparse = false;
+    fs::LinkKind link_kind = fs::LinkKind::None;
     bool cloud_recall = false;
     bool record_only = false;
     bool cut = false;
@@ -92,6 +96,9 @@ struct ListEntryView {
     D2D1_COLOR_F tag_dots[3]{};
     int tag_dot_count = 0;
     std::wstring snippet;
+    // This PC tiles: used fraction (-1 = unknown) and "X free of Y".
+    float drive_used = -1.0f;
+    std::wstring drive_space_text;
 };
 
 struct RowPresentationCache {
@@ -202,6 +209,7 @@ struct PaneViewModel {
     bool is_search = false;   // search results add a display-only 路径 column
     bool is_query_search = false;
     bool is_content_search = false;
+    bool network_live_action = false;  // #74: banner offers "Add to network index"
     std::wstring search_query;
     // Query search breadcrumb: origin segments followed by one search segment.
     bool has_search_origin = false;
@@ -333,6 +341,9 @@ struct SidebarGroup {
     bool collapsed = false;
     bool hidden = false;           // Section menu: the group is not laid out at all.
     SidebarAddAction add_action = SidebarAddAction::None;
+    // The header title (icon + name) opens the section's own view (#80): only
+    // This PC has one. The rest of the header, and every other header, folds.
+    bool navigable = false;
     bool tabs_section = false;     // vertical tabs block: set apart by a divider
 };
 
@@ -418,11 +429,13 @@ struct TrayDeckView {
 
 // Right-side details panel for the current selection (ui.md §7.2 视图簇).
 struct DetailsPanelView {
+    bool is_link = false;
     bool has_selection = false;
     int multi_count = 0;            // >1 => multi-selection summary mode
     std::wstring name, path, type_text;
     std::wstring subtitle_text;     // under-name line: type · size short form
     bool is_dir = false;
+    fs::LinkKind link_kind = fs::LinkKind::None;
     DWORD attrs = 0;
     uint64_t modified_value = 0;    // thumbnail cache key parts
     uint64_t size_value = 0;
@@ -508,7 +521,8 @@ struct IndexVolumeRowView {
     std::wstring id;
     std::wstring title;
     std::wstring detail;
-    std::wstring state;
+    std::wstring state;      // localized for display
+    std::wstring raw_state;  // as reported by the index service (Simplified), for the badge
     bool checked = false;
     bool enabled = false;
     bool pending = false;
@@ -646,6 +660,7 @@ struct WindowViewModel {
     int settings_page = 0; // 0 general, 1 search/index, 2 context menu, 3 about, 4 duplicates
     float settings_scroll = 0.0f;
     bool settings_launch_on_startup = false;
+    bool settings_start_in_tray = false;
     bool settings_keep_running = false;
     bool settings_show_hidden_files = false;
     bool settings_show_protected_os_files = false;
@@ -654,23 +669,42 @@ struct WindowViewModel {
     bool settings_list_zebra_rows = true;
     bool settings_list_size_bar = false;
     bool settings_list_tag_names = false;
+    bool settings_list_selection_outline = false;
     bool settings_vertical_tabs = false;
     bool settings_show_hints = true;
     bool settings_tips_seen = false;   // any teaching bubble already shown
     int settings_folder_sort = 0; // 0 folders first, 1 follow direction, 2 mixed
     int settings_startup_open = 0; // 0 last tabs, 1 default location
+    int settings_notify_icon = 0;  // 0 always, 1 in the background, 2 never (#57)
     int settings_new_tab_open = 0; // 0 current folder, 1 default location
+    bool settings_close_last_tab = false;
+    bool settings_confirm_delete = false;
     std::wstring settings_home_folder; // default location; empty = This PC
     int settings_text_render = 0; // 0 auto, 1 sharp, 2 smooth
+    int settings_ui_font_scale = 100; // interface font size: 90 / 100 / 112 / 125
     bool settings_open_folders = false;
     bool settings_win_e = false;
+    bool settings_this_pc = false;
+    bool settings_explorer_windows = false;   // experimental Explorer window takeover
+    // 设为默认文件管理器: 0 off, 1 partial, 2 full; the text lists what is missing.
+    int settings_default_manager = 0;
+    std::wstring settings_default_manager_desc;
+    bool settings_integration_enabled = false;
+    bool settings_integration_folders = false;
+    bool settings_integration_win_e = false;
+    bool settings_integration_this_pc = false;
+    bool settings_integration_experimental = false;
+    int settings_integration_state = 0; // 0 off, 1 on, 2 partial, 3 failed
+    std::wstring settings_integration_summary;
+    bool settings_integration_can_retry = false;
+    bool settings_integration_can_restore = false;
     bool settings_shell_tags = false;
-    bool settings_blank_click_go_back = false;
+    int settings_blank_click_action = 0;   // app/blank_pane_click.h
     bool settings_change_tracking = false;
     int settings_change_days = 3;
     int settings_row_height = 34; // current row-height pref (DIPs) for density radios
     int settings_tray_icon = 48;  // current tray-deck icon pref (DIPs) for size radios
-    int settings_language = 0;    // 0 system, 1 zh-CN, 2 en-US
+    int settings_language = 0;    // 0 system, 1 zh-CN, 2 zh-TW, 3 en-US
     BloomAccentPicker* settings_bloom = nullptr;
     bool settings_group_on[5] = { true, true, false, false, true };
     std::vector<SettingsRowView> settings_items;
@@ -695,6 +729,7 @@ struct WindowViewModel {
     bool settings_update_downloading = false;
     bool settings_update_installing = false;
     bool settings_update_available = false;
+    bool settings_update_auto = true;  // background checks + reminders (AppPrefs::auto_check_updates)
     bool settings_diagnostics_exporting = false;
     bool settings_show_performance = false;
     int dup_scope = 0;
@@ -753,6 +788,7 @@ struct HitTestResult {
         AddressSearchContent,
         AddressSearchOptions,
         ContentIndexManage,
+        NetworkIndexAdd,
         SettingsContentIndex,
         SettingsFind, SettingsDisclosure, SettingsTheme, SettingsDropdown,
         SettingsContentAction,
@@ -814,6 +850,7 @@ struct HitTestResult {
         StatusBarCancelSearch,
         SettingsNav,
         SettingsToggle,
+        SettingsIntegration, // 0 master, 1 folders, 2 Win+E, 3 This PC, 4 experimental, 5 retry, 6 restore
         SettingsGlobalSearchHotkey,
         SettingsChangeDays,
         SettingsRestore,
@@ -823,9 +860,12 @@ struct HitTestResult {
         SettingsDensity,
         SettingsFolderSort,
         SettingsStartupOpen,
+        SettingsNotifyIcon,
         SettingsNewTabOpen,
+        SettingsBlankClick,
         SettingsHomeFolder,
         SettingsTextRender,
+        SettingsUiFontSize,
         SettingsTrayIcon,
         SettingsLanguage,
         SettingsIndexVolume,
@@ -1042,6 +1082,7 @@ public:
         for (const auto& m : list_hover_motion_) active = active || m.Active(motion_now);
         for (const auto& m : list_shift_) active = active || m.Active(motion_now);
         for (const auto& m : view_morph_) active = active || m.Active(motion_now);
+        for (const auto& m : link_pill_motion_) active = active || m.Active(motion_now);
         // Loading placeholders shimmer (and must appear on time) while any
         // pane is still enumerating.
         active = active || list_loading_active_;
@@ -1113,9 +1154,10 @@ public:
     float TypeChipWidthDip(const std::wstring& chip) const;
     // Cached max(LumaText, DWrite) advance for list cells (small=true: SmallFormat).
     float CellTextWidth(const std::wstring& text, bool small_text = false) const;
-    void SetListStyle(bool smart_date, bool zebra, bool size_bar, bool tag_names) {
+    void SetListStyle(bool smart_date, bool zebra, bool size_bar, bool tag_names,
+                      bool selection_outline) {
         list_smart_date_ = smart_date; list_zebra_ = zebra; list_size_bar_ = size_bar;
-        list_tag_names_ = tag_names;
+        list_tag_names_ = tag_names; list_selection_outline_ = selection_outline;
         auto_widths_scale_ = -1.0f;
     }
     bool ListSmartDate() const { return list_smart_date_; }
@@ -1133,6 +1175,14 @@ public:
     uint32_t PaintedColumnMask(int pane_index) const {
         return pane_index >= 0 && pane_index < static_cast<int>(painted_columns_.size())
             ? painted_columns_[static_cast<size_t>(pane_index)] : 0u;
+    }
+    // Whether the hovered row's name was drawn shortened in the pane's last
+    // painted frame. Unknown (that row not painted as hovered yet) counts as
+    // shortened, so the full-name tooltip is never lost.
+    bool HoveredNameTruncated(int pane_index, int source_index) const {
+        if (pane_index < 0 || pane_index >= static_cast<int>(hover_names_.size())) return true;
+        const HoverNamePaint& painted = hover_names_[static_cast<size_t>(pane_index)];
+        return painted.source != source_index || painted.truncated;
     }
     // Double-click on a divider: drop the manual widths on both sides so the
     // columns return to their fitted widths.
@@ -1319,6 +1369,9 @@ private:
     void DrawSidebarPeek(const WindowViewModel& vm, const D2D1_RECT_F& rect, const Theme& theme);
     void DrawFileIcon(float x, float y, float size, const Theme& theme);
     void DrawEntryIcon(const ListEntryView& entry, float x, float y, float size, const Theme& theme);
+    void DrawLinkOverlay(float x, float y, float size, const Theme& theme, float opacity = 1.0f,
+                         const std::wstring& label = {}, float expansion = 0.0f,
+                         float right_limit = 0.0f, const D2D1_RECT_F* artwork = nullptr);
     // One item's icon mid view-switch (ui_view_morph.h): thumbnail and shell
     // icon cross-fade while the rect travels. dx/dy: the row transform.
     void DrawMorphIcon(const ListEntryView& entry, const PaneViewModel& vm,
@@ -1341,11 +1394,13 @@ private:
     bool EnsureFluentSvg(int resource_id, bool colorful = false);
     bool DrawFluentSvg(int resource_id, const D2D1_RECT_F& bounds, float opacity = 1.0f,
                        const D2D1_COLOR_F* foreground = nullptr, bool colorful = false);
-    void DrawTruncatedName(const std::wstring& name, float x, float y, float w, float h,
+    // Returns true when the name had to be shortened with an ellipsis.
+    bool DrawTruncatedName(const std::wstring& name, float x, float y, float w, float h,
                            const Theme& theme, bool selected, const std::vector<NameMatchRange>& matches, bool dim_extension = false);
+    // `truncated` (optional, costs one extra layout): the wrapped name did not fit.
     void DrawCenteredIconName(const std::wstring& name, const D2D1_RECT_F& bounds,
                               const D2D1_COLOR_F& color, const Theme& theme,
-                              const std::vector<NameMatchRange>& matches);
+                              const std::vector<NameMatchRange>& matches, bool* truncated = nullptr);
     // Title-bar product mark from the app icon resource (nullptr until loaded).
     ID2D1Bitmap* LogoBitmap();
 
@@ -1384,6 +1439,7 @@ private:
     float row_height_dip_ = 34.0f;
     bool list_smart_date_ = true, list_zebra_ = true, list_size_bar_ = false;
     bool list_tag_names_ = false;
+    bool list_selection_outline_ = false;
     unsigned row_actions_ = 7u;
     uint32_t details_columns_ = kDetailsColumnsDefault;
     // Motion state: highlight plates glide between items (ui_motion.h).
@@ -1393,6 +1449,7 @@ private:
     motion::RectMotion settings_nav_pill_;
     motion::RectMotion settings_nav_hover_;
     std::array<motion::RectMotion, 8> list_hover_motion_{};
+    std::array<LinkPillMotion, 8> link_pill_motion_{};
     std::array<motion::ListShiftMotion, 8> list_shift_{};
     std::array<motion::ViewMorphMotion, 8> view_morph_{};
     std::array<uint64_t, 8> list_loading_since_{};
@@ -1411,6 +1468,8 @@ private:
     mutable std::unordered_map<std::wstring, float> cell_text_widths_;
     mutable float cell_text_widths_scale_ = 0.0f;
     std::array<uint32_t, 8> painted_columns_{};
+    struct HoverNamePaint { int source = -1; bool truncated = true; };
+    std::array<HoverNamePaint, 8> hover_names_{};   // per pane, see HoveredNameTruncated
     float tray_icon_dip_ = 48.0f;
     // Staging tray card text: 13 px semibold name, 11 px folder line.
     mutable ComPtr<IDWriteTextFormat> tray_name_format_;
@@ -1455,6 +1514,7 @@ private:
     mutable ComPtr<ID2D1SolidColorBrush> brIconFile_;
     mutable ComPtr<ID2D1StrokeStyle> dashStroke_;
     ComPtr<ID2D1StrokeStyle> paneHeaderStroke_;
+    ComPtr<ID2D1PathGeometry> link_arrow_geometry_;
     mutable ComPtr<ID2D1SolidColorBrush> brFpsBg_;
     mutable ComPtr<ID2D1SolidColorBrush> brFpsText_;
 

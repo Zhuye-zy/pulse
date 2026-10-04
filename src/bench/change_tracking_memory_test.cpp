@@ -177,6 +177,22 @@ int main(int argc, char** argv) {
     }
     check(true, "40 seeded histories / 160 rolling windows match legacy rollups");
     {
+        const std::vector<std::wstring> variants{
+            L"C:\\Root\\Folder\\Item", L"c:/root/folder/renamed", L"\\\\?\\C:\\ROOT\\Other\\Item",
+            L"C:\\Root\\Folder-neighbor\\Item", L"\\\\?\\UNC\\Server\\Share\\Folder\\Item",
+            L"\\\\server\\share\\other\\ITEM", L"C:\\", L"", L"relative", L"C:\\Root\\Folder\\"};
+        bool equal = true;
+        for (const auto& current : variants) for (const auto& previous : variants) for (bool directory : {false, true}) {
+            ChangeRecord event; event.path = current; event.old_path = previous;
+            event.kind = ChangeKind::Renamed; event.is_dir = directory;
+            std::vector<std::pair<std::wstring, ChangeKind>> expected, actual;
+            VisitAncestors(event, [&](const auto& path) { expected.emplace_back(path, Relative(event, path).kind); });
+            VisitSummaryAncestors(event, [&](const auto& path, ChangeKind kind) { actual.emplace_back(path, kind); });
+            equal &= actual == expected;
+        }
+        check(equal, "normalized summary traversal preserves rename kinds for 200 path/directory combinations");
+    }
+    {
         // A single identity visiting many directories must not turn the compact
         // accumulator into a quadratic scan, or duplicate common ancestors.
         std::vector<ChangeRecord> moves;

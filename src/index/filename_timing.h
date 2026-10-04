@@ -5,6 +5,7 @@
 #include <string>
 #include "index_memory_probe.h"
 #include "index_maintenance_probe.h"
+#include "../common/runtime_log.h"
 
 namespace pulse::index {
 enum class FilenameStage : size_t { Wait, Topology, Journal, Notify, DeltaFlush, Merge, Rebuild, Recovery, NamePoolCompact, Count };
@@ -18,7 +19,7 @@ public:
     void End(FilenameStage stage, Token token, uint64_t changes = 0,
              DWORD error = ERROR_SUCCESS, const char* reason = "none", wchar_t volume = 0) noexcept;
     void Flush(bool force = false) noexcept;
-    bool Due() const noexcept { return IndexDiagnosticsEnabled() &&
+    bool Due() const noexcept { return (IndexDiagnosticsEnabled() || diagnostics::runtime::Enabled()) &&
         (!last_flush_ || GetTickCount64() - last_flush_ >= 60000); }
     IndexMemoryProbe& Memory() noexcept { return memory_; }
     IndexMaintenanceProbe& Maintenance() noexcept { return maintenance_; }

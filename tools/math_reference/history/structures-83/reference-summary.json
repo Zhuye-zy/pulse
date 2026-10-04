@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "engine": "KaTeX",
+  "version": "0.16.22",
+  "integrity": "sha512-XCHRdUw4lf3SKBaJe4EvgqIuWwkPSo9XoeO8GjQW94Bp7TWv9hNhzZjZ+OH9yf1UmLygb7DIT5GSFQiyt16zYg==",
+  "node": "v24.19.0",
+  "platform": "win32",
+  "corpusSha256": "3fffd2405294b04138222c049d1e94c0cfc6ec8cba534291674e3abb090aff6c",
+  "options": {
+    "throwOnError": true,
+    "strict": "error",
+    "trust": false,
+    "maxExpand": 1000,
+    "maxSize": 100
+  },
+  "total": 83,
+  "accepted": 69,
+  "rejected": 14,
+  "referenceVerdictMismatches": [],
+  "nativeAcceptCases": 57,
+  "nativeFallbackCases": 12,
+  "invalidCases": 14,
+  "galleryAssets": {
+    "localStylesheet": true,
+    "verifiedLocalFontFiles": 60,
+    "upstreamLicensePresent": true
+  },
+  "note": "Reference results only. Native acceptance and visual equivalence require separate checks."
+}

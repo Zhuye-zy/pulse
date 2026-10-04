@@ -26,6 +26,7 @@ MainRenderer::MainRenderer() = default;
 
 void MainRenderer::SetCompositor(Compositor* comp) {
     paneHeaderStroke_.reset();
+    link_arrow_geometry_.reset();
     tray_shadows_.clear();
     ClearTextWidthCache();
     sized_icon_formats_.clear();
@@ -152,23 +153,60 @@ D2D1_RECT_F MainRenderer::TitleBarRect(float w) const {
     return D2D1::RectF(0, 0, w, title_bar_height_);
 }
 
+namespace {
+// Width of a toolbar command (icon + label [+ chevron]) sized to its label, so
+// Sort, Filter and Group keep even spacing and each chevron sits 4 DIP after its
+// text. Layout is queried many times per frame (paint, hit tests): small cache.
+float ToolbarCommandWidth(const fluent::Painter& painter, IDWriteTextFormat* format,
+                          l10n::StringId id, const wchar_t* glyph, bool drop_down,
+                          float scale, float fallback_dip) {
+    struct Entry { int id = -1; float scale = 0.0f, font = 0.0f; const void* format = nullptr;
+                   std::wstring text; float width = 0.0f; };
+    thread_local Entry cache[3];
+    const std::wstring text(l10n::Get(id));
+    const float font = format ? format->GetFontSize() : 0.0f;
+    for (const Entry& e : cache)
+        if (e.id == static_cast<int>(id) && e.scale == scale && e.font == font &&
+            e.format == format && e.text == text)
+            return e.width;
+    const float bare = painter.MeasureButtonWidth(L"", glyph, drop_down);
+    const float full = painter.MeasureButtonWidth(text, glyph, drop_down);
+    // No text measurement available (no device yet): keep the fixed width.
+    const float width = format && full > bare ? full : fallback_dip * scale;
+    // One slot per button: reuse its slot, else the first free one.
+    Entry* slot = &cache[2];
+    for (Entry& e : cache)
+        if (e.id == static_cast<int>(id) || e.id < 0) { slot = &e; break; }
+    *slot = {static_cast<int>(id), scale, font, format, text, width};
+    return width;
+}
+} // namespace
+
 float MainRenderer::ToolbarGroupWidth(float w) const {
     if (toolbar_group_ < 0) return 0.0f;
     // Narrow windows: icon only, like Sort and Filter.
     if (w - EffectiveSidebarWidth(w) < 700.0f * scale_) return 32.0f * scale_;
-    return (toolbar_group_ > 0 ? 212.0f : 108.0f) * scale_;
+    if (toolbar_group_ > 0) return 212.0f * scale_;
+    return ToolbarCommandWidth(painter_, compositor_ ? compositor_->TextFormat() : nullptr,
+                               l10n::StringId::ToolbarGroup, L"\xF168", true, scale_, 108.0f);
 }
 
 ToolbarLayout MainRenderer::ToolbarLayoutAt(float w, float create_width, float filter_expand) const {
     const float left = EffectiveSidebarWidth(w);
     const float group_width = ToolbarGroupWidth(w);
+    IDWriteTextFormat* format = compositor_ ? compositor_->TextFormat() : nullptr;
+    const float sort_width = ToolbarCommandWidth(painter_, format, l10n::StringId::ToolbarSort,
+                                                 L"\xE8CB", true, scale_, 88.0f);
+    const float filter_width = ToolbarCommandWidth(painter_, format, l10n::StringId::ToolbarFilter,
+                                                   kIconFilter, false, scale_, 88.0f);
     if (!vertical_tabs_)
         return MakeToolbarLayout(w, scale_, title_bar_height_, margin_, create_width, left, filter_expand,
-                                 search_min_dip_, group_width);
+                                 search_min_dip_, group_width, sort_width, filter_width);
     // Command row directly under the title bar; address row centered in it,
     // stopping short of the settings button.
     ToolbarLayout out = MakeToolbarLayout(w, scale_, title_bar_height_ - 46.0f * scale_, margin_,
-                                          create_width, left, filter_expand, 0.0f, group_width);
+                                          create_width, left, filter_expand, 0.0f, group_width, sort_width,
+                                          filter_width);
     const TitleChrome chrome = MakeTitleChrome(w, scale_, title_bar_height_);
     const float row_top = (title_bar_height_ - 36.0f * scale_) * 0.5f - 4.0f * scale_;
     const ToolbarLayout row = MakeToolbarLayout(chrome.settings_left - 4.0f * scale_, scale_, row_top,
@@ -965,16 +1003,41 @@ void MainRenderer::DrawTitleBar(const WindowViewModel& vm, const D2D1_RECT_F& re
         // separates it from the command row.
         FillRect(dc, brStrokeDivider_.get(), 0.0f, h - 1.0f, right, 1.0f);
     }
-    const D2D1_RECT_F settingsRc = D2D1::RectF(chrome.settings_left, tabY,
-        chrome.settings_left + chrome.settings_w, tabY + tabH);
+    // Settings + theme: one quiet pill with a hairline between the two, so
+    // they read as app actions rather than two more caption buttons.
+    const float groupTop = h * 0.5f - 18.0f * scale_;
+    const float groupBottom = h * 0.5f + 18.0f * scale_;
+    if (!IsHighContrast()) {
+        MakeBrush(dc, WithAlpha(theme.text, vm.dark ? 0.06f : 0.045f), brFillHover_);
+        FillRoundedRect(dc, brFillHover_.get(), chrome.group_left, groupTop,
+                        chrome.group_right - chrome.group_left, groupBottom - groupTop, 8.0f * scale_);
+    }
+    MakeBrush(dc, IsHighContrast() ? theme.stroke_divider : WithAlpha(theme.text, 0.12f), brStrokeDivider_);
+    FillRect(dc, brStrokeDivider_.get(), chrome.theme_left - 1.0f * scale_, h * 0.5f - 8.0f * scale_,
+             1.0f * scale_, 16.0f * scale_);
+    MakeBrush(dc, theme.stroke_divider, brStrokeDivider_);
+    const float buttonTop = groupTop + 2.0f * scale_;
+    const float buttonBottom = groupBottom - 2.0f * scale_;
+    const D2D1_RECT_F settingsRc = D2D1::RectF(chrome.settings_left, buttonTop,
+        chrome.settings_left + chrome.settings_w, buttonBottom);
     DrawButton(settingsRc, theme,
         IsHovered(vm, HitTestResult::SettingsButton) ? theme.fill_hover : kTransparent,
-        kIconSettings, L"S", theme.text_secondary, true, true);
+        kIconSettings, L"S", theme.text, true, true);
 
-    const D2D1_RECT_F themeRc = D2D1::RectF(chrome.theme_left, tabY,
-        chrome.theme_left + chrome.theme_w, tabY + tabH);
-    DrawButton(themeRc, theme, IsHovered(vm, HitTestResult::ThemeToggle) ? theme.fill_hover : kTransparent,
-        kIconTheme, L"T", theme.text_secondary, true, true);
+    const D2D1_RECT_F themeRc = D2D1::RectF(chrome.theme_left, buttonTop,
+        chrome.theme_left + chrome.theme_w, buttonBottom);
+    {
+        // The solid half shows the current theme: right in light, left in dark.
+        D2D1_MATRIX_3X2_F previous{};
+        dc->GetTransform(&previous);
+        if (vm.dark) {
+            dc->SetTransform(D2D1::Matrix3x2F::Rotation(180.0f, D2D1::Point2F(
+                (themeRc.left + themeRc.right) * 0.5f, (themeRc.top + themeRc.bottom) * 0.5f)) * previous);
+        }
+        DrawButton(themeRc, theme, IsHovered(vm, HitTestResult::ThemeToggle) ? theme.fill_hover : kTransparent,
+            kIconTheme, L"T", theme.text, true, true);
+        dc->SetTransform(previous);
+    }
 
     // Window controls, right-aligned in Win11 order: min, max/restore, close.
     const float ctrlY = y;

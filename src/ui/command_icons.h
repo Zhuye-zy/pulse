@@ -22,7 +22,7 @@ enum class Icon {
     Cut, Copy, Paste, Rename, Sort, Filter, List, Grid, Split, Columns,
     Panel, PanelClose, Check, Eye, Info, Home, Tray, Pin, Link,
     Palette, Sliders, Warning, Lock, OpenExternal, StarFilled, More,
-    SplitSingle, SplitStacked, SplitThree, SplitFour, Count
+    SplitSingle, SplitStacked, SplitThree, SplitFour, Contrast, Count
 };
 
 inline Icon FromGlyph(std::wstring_view glyph) noexcept {
@@ -61,6 +61,7 @@ inline Icon FromGlyph(std::wstring_view glyph) noexcept {
     case L'\xE8EC': return Icon::Tag;
     case L'\xE713': return Icon::Settings;
     case L'\xE706': return Icon::Sun;
+    case L'\xE793': return Icon::Contrast;
     case L'\xE8C6': return Icon::Cut;
     case L'\xE8C8': case L'\xE8EF': return Icon::Copy;
     case L'\xE77F': return Icon::Paste;
@@ -256,6 +257,15 @@ inline ID2D1PathGeometry* BuildGeometry(ID2D1Factory* factory, Icon icon) noexce
     case Icon::Sun:
         circle(12,12,4); line(12,2,12,4); line(12,20,12,22); line(2,12,4,12); line(20,12,22,12);
         line(5,5,6.5f,6.5f); line(17.5f,17.5f,19,19); line(5,19,6.5f,17.5f); line(17.5f,6.5f,19,5); break;
+    case Icon::Contrast:
+        // Theme: an outlined disc with its right half solid. The solid half
+        // keeps it apart from the outlined gear beside it at 16 px.
+        circle(12,12,8.5f);
+        sink->BeginFigure({12,3.5f}, D2D1_FIGURE_BEGIN_FILLED);
+        sink->AddArc(D2D1::ArcSegment({20.5f,12},{8.5f,8.5f},0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL));
+        sink->AddArc(D2D1::ArcSegment({12,20.5f},{8.5f,8.5f},0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL));
+        sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+        break;
     case Icon::Cut:
         circle(6.5f,17.5f,3); circle(17.5f,17.5f,3);
         line(8.6f,15.4f,19,3.5f); line(5,3.5f,11,10.4f);
@@ -374,7 +384,8 @@ inline bool Draw(ID2D1RenderTarget* target, ID2D1Brush* brush,
     target->SetTransform(D2D1::Matrix3x2F::Scale(side/kCanvas,side/kCanvas) *
         D2D1::Matrix3x2F::Translation((bounds.left+bounds.right-side)*0.5f,
                                      (bounds.top+bounds.bottom-side)*0.5f) * previous);
-    if (icon == Icon::StarFilled || icon == Icon::More) target->FillGeometry(geometry,brush);
+    if (icon == Icon::StarFilled || icon == Icon::More || icon == Icon::Contrast)
+        target->FillGeometry(geometry,brush);
     if (icon != Icon::More) target->DrawGeometry(geometry,brush,kStroke,stroke);
     target->SetTransform(previous);
     brush->SetOpacity(previous_opacity);

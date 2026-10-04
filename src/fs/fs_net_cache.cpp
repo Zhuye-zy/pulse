@@ -1,5 +1,6 @@
 // fs_net_cache.cpp — Disk snapshots for UNC folders and a timed connectivity probe.
 #include "fs_net_cache.h"
+#include "../common/localization.h"
 #include <shlobj.h>
 #include <chrono>
 #include <fstream>
@@ -52,7 +53,7 @@ bool SaveNetSnapshot(const std::wstring& path, const SnapshotPtr& snapshot) {
     std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
     if (!f) return false;
     f.write("PNCH", 4);
-    uint32_t ver = 1;
+    uint32_t ver = 2;
     uint64_t ts = NowUnix();
     uint32_t count = static_cast<uint32_t>(snapshot->size());
     f.write(reinterpret_cast<const char*>(&ver), 4);
@@ -64,6 +65,7 @@ bool SaveNetSnapshot(const std::wstring& path, const SnapshotPtr& snapshot) {
         uint32_t nlen = static_cast<uint32_t>(e.name.size());
         f.write(reinterpret_cast<const char*>(&flags), 1);
         f.write(reinterpret_cast<const char*>(&e.attrs), 4);
+        f.write(reinterpret_cast<const char*>(&e.reparse_tag), 4);
         f.write(reinterpret_cast<const char*>(&e.size), 8);
         f.write(reinterpret_cast<const char*>(&mtime), 8);
         f.write(reinterpret_cast<const char*>(&nlen), 4);
@@ -89,15 +91,16 @@ SnapshotPtr LoadNetSnapshot(const std::wstring& path, uint64_t* unix_sec) {
     f.read(reinterpret_cast<char*>(&ver), 4);
     f.read(reinterpret_cast<char*>(&ts), 8);
     f.read(reinterpret_cast<char*>(&count), 4);
-    if (ver != 1 || count > 500000) return nullptr;
+    if ((ver != 1 && ver != 2) || count > 500000) return nullptr;
     auto entries = std::make_shared<std::vector<DirEntry>>();
     entries->reserve(count);
     for (uint32_t i = 0; i < count; ++i) {
         uint8_t flags = 0;
-        uint32_t attrs = 0, nlen = 0;
+        uint32_t attrs = 0, nlen = 0, reparse_tag = 0;
         uint64_t size = 0, mtime = 0;
         f.read(reinterpret_cast<char*>(&flags), 1);
         f.read(reinterpret_cast<char*>(&attrs), 4);
+        if (ver >= 2) f.read(reinterpret_cast<char*>(&reparse_tag), 4);
         f.read(reinterpret_cast<char*>(&size), 8);
         f.read(reinterpret_cast<char*>(&mtime), 8);
         f.read(reinterpret_cast<char*>(&nlen), 4);
@@ -105,7 +108,9 @@ SnapshotPtr LoadNetSnapshot(const std::wstring& path, uint64_t* unix_sec) {
         DirEntry e;
         e.name.assign(nlen, L'\0');
         f.read(reinterpret_cast<char*>(e.name.data()), nlen * sizeof(wchar_t));
+        if (!f) return nullptr;
         e.attrs = attrs;
+        e.reparse_tag = reparse_tag;
         e.size = size;
         e.mtime.dwLowDateTime = static_cast<DWORD>(mtime);
         e.mtime.dwHighDateTime = static_cast<DWORD>(mtime >> 32);
@@ -118,14 +123,15 @@ SnapshotPtr LoadNetSnapshot(const std::wstring& path, uint64_t* unix_sec) {
 }
 
 std::wstring FormatCacheAge(uint64_t unix_sec) {
-    if (unix_sec == 0) return L"刚才";
+    if (unix_sec == 0) return l10n::Pick(L"刚才", L"Just now");
     const uint64_t now = NowUnix();
-    if (now <= unix_sec) return L"刚才";
+    if (now <= unix_sec) return l10n::Pick(L"刚才", L"Just now");
     const uint64_t sec = now - unix_sec;
-    if (sec < 60) return std::to_wstring(sec) + L" 秒前";
-    if (sec < 3600) return std::to_wstring(sec / 60) + L" 分钟前";
-    if (sec < 86400) return std::to_wstring(sec / 3600) + L" 小时前";
-    return std::to_wstring(sec / 86400) + L" 天前";
+    if (sec < 60) return std::to_wstring(sec) + l10n::Pick(L" 秒前", L" sec ago");
+    if (sec < 3600) return std::to_wstring(sec / 60) + l10n::Pick(L" 分钟前", L" min ago");
+    if (sec < 86400) return std::to_wstring(sec / 3600) + l10n::Pick(L" 小时前", L" hr ago");
+    const uint64_t days = sec / 86400;
+    return std::to_wstring(days) + l10n::Pick(L" 天前", days == 1 ? L" day ago" : L" days ago");
 }
 
 namespace {

@@ -1,9 +1,11 @@
+#include "tag_ads_sync.h"
 #include "../ui/shortcut_help.h"
 // app_commands.cpp — extracted from app_main.cpp.
 #include "quick_access.h"
 #include "app_column_view.h"
 #include "../ui/toolbar_layout.h"
 #include "app_internal.h"
+#include "tray_reveal.h"
 #include "group_wheel_ui.h"
 #include "text_diff.h"
 #include "global_search_controller.h"
@@ -11,6 +13,7 @@
 #include "../ui/fluent_menu.h"
 #include "../ui/drag_drop.h"
 #include "../ui/file_operation_dialog.h"
+#include "../ui/folder_picker_dialog.h"
 #include "../ui/batch_rename_dialog.h"
 #include "../ui/advanced_search_dialog.h"
 #include "../ui/quick_preview_window.h"
@@ -31,6 +34,7 @@
 #include "resource.h"
 #include "../ops/clipboard.h"
 #include "../ipc/ctx_menu_util.h"
+#include "shell_registry_debounce.h"
 #include <windows.h>
 #include <windowsx.h>
 #include <commctrl.h>
@@ -41,6 +45,7 @@
 #include <shobjidl.h>
 #include <shlwapi.h>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cwctype>
 #include <cstring>
@@ -52,6 +57,7 @@ using namespace pulse;
 namespace pulse {
 HANDLE g_shell_watch_stop = nullptr;
 HANDLE g_shell_watch_thread = nullptr;
+std::atomic<uint32_t> g_shell_seed_generation{0};
 
 namespace {
 std::wstring TagLabel(l10n::StringId id, const std::wstring& name, size_t count = 0) {
@@ -74,7 +80,8 @@ bool EnsureMenu(AppState& s) {
         }
     }
     s.menu->SetTheme(s.darkMode, s.accentColor);
-    s.menu->SetRowHeightDip(static_cast<float>(app::MenuRowHeightDip(s.appPrefs.row_height)));
+    s.menu->SetRowHeightDip(static_cast<float>(app::MenuRowHeightDip(
+        app::EffectiveRowHeightDip(s.appPrefs.row_height, s.appPrefs.ui_font_scale))));
     return true;
 }
 
@@ -116,14 +123,13 @@ void QueueTagAds(AppState& s, std::vector<app::TagAdsUpdate> updates) {
     const HWND notify = s.hwnd;
     const auto network_location = l10n::Get(l10n::StringId::TagNetworkLocation);
     const auto this_location = l10n::Get(l10n::StringId::TagThisLocation);
-    s.worker.EnqueueIo([updates = std::move(updates), notify, network_location, this_location] {
+    s.worker.EnqueueSerialIo([updates = std::move(updates), notify, network_location, this_location] {
         auto failed = std::make_unique<std::vector<std::wstring>>();
-        for (const auto& update : updates) {
-            if (app::WriteTagAdsV2(update.path, update.tags)) continue;
+        for (const auto& failed_path : app::SyncTagAdsUpdates(updates)) {
             wchar_t volume[MAX_PATH]{};
-            if (GetVolumePathNameW(update.path.c_str(), volume, ARRAYSIZE(volume)))
+            if (GetVolumePathNameW(failed_path.c_str(), volume, ARRAYSIZE(volume)))
                 failed->push_back(ClipboardPath(volume));
-            else if (fs::IsUncPath(update.path))
+            else if (fs::IsUncPath(failed_path))
                 failed->push_back(network_location);
             else
                 failed->push_back(this_location);
@@ -682,6 +688,9 @@ void DispatchMenuCommand(AppState& s, int cmd) {
     case app::CmdApplyViewToAllFolders:
         ApplyViewToAllFolders(s);
         break;
+    case app::CmdApplyGroupToAllFolders:
+        if (const app::Tab* tab = ActiveTab(s)) ApplyGroupToAllFolders(s, tab->group_by);
+        break;
     case app::CmdRefresh:
         if (const auto* tab = ActiveTab(s)) {
             s.store.MarkDirty(tab->current_path);
@@ -916,6 +925,9 @@ void DispatchMenuCommand(AppState& s, int cmd) {
     case app::CmdSettings:
         OpenSettingsTab(s, 0);
         break;
+    case app::CmdExitPulse:
+        PostMessageW(s.hwnd, WM_EXIT_PULSE, 0, 0);
+        break;
     case app::CmdSettingsContextMenu:
         OpenSettingsTab(s, 2);
         break;
@@ -1079,8 +1091,9 @@ std::wstring StaticVerbKey(const app::Tab& tab, const std::vector<int>& indices)
 void PrefetchStaticVerbs(AppState& s, const std::wstring& ext) {
     if (!s.context_menu.RequestStaticPrefetch(ext)) return;
     HWND hwnd = s.hwnd;
-    std::thread([hwnd, ext] {
-        auto* result = new ShellVerbsResult{ ext, app::EnumerateStaticVerbs(ext) };
+    const uint32_t cache_generation = s.context_menu.cache_generation();
+    std::thread([hwnd, ext, cache_generation] {
+        auto* result = new ShellVerbsResult{ ext, app::EnumerateStaticVerbs(ext), cache_generation };
         if (!PostMessageW(hwnd, WM_SHELL_VERBS, 0, reinterpret_cast<LPARAM>(result)))
             delete result;
     }).detach();
@@ -1107,18 +1120,32 @@ DWORD WINAPI ShellRegistryWatch(LPVOID param) {
     open(HKEY_CURRENT_USER,
          L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts", watches[2]);
     HANDLE wait[4]{ stop, nullptr, nullptr, nullptr };
+    int watch_of[4]{ -1, -1, -1, -1 };
     DWORD count = 1;
-    for (int i = 0; i < 3; ++i)
-        if (watches[i].event) wait[count++] = watches[i].event;
-    while (WaitForMultipleObjects(count, wait, FALSE, INFINITE) != WAIT_OBJECT_0) {
-        if (!IsWindow(hwnd)) break;
-        PostMessageW(hwnd, WM_SHELL_CACHE_INVALIDATE, 0, 0);
-        for (int i = 0; i < 3; ++i) {
-            if (watches[i].key && watches[i].event)
-                RegNotifyChangeKeyValue(watches[i].key, TRUE,
-                                        REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_CHANGE_LAST_SET,
-                                        watches[i].event, TRUE);
+    for (int i = 0; i < 3; ++i) {
+        if (!watches[i].event) continue;
+        watch_of[count] = i;
+        wait[count++] = watches[i].event;
+    }
+    // A registry cleaner fires these thousands of times in a row; flush once
+    // per burst instead of re-seeding the verb cache on every change (#127).
+    app::ShellRegistryDebounce debounce;
+    for (;;) {
+        const DWORD r = WaitForMultipleObjects(count, wait, FALSE,
+                                               debounce.WaitMs(GetTickCount64()));
+        if (r == WAIT_OBJECT_0 || r == WAIT_FAILED || !IsWindow(hwnd)) break;
+        if (r > WAIT_OBJECT_0 && r < WAIT_OBJECT_0 + count) {
+            // Re-arm only the key that fired: the others are still armed, and
+            // re-registering them would stack notifications on the key.
+            const Watch& w = watches[watch_of[r - WAIT_OBJECT_0]];
+            RegNotifyChangeKeyValue(w.key, TRUE, REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_CHANGE_LAST_SET,
+                                    w.event, TRUE);
+            debounce.Note(GetTickCount64());
         }
+        // Checked after every wake: during a steady stream the events never
+        // let the wait time out, and the max delay must still flush.
+        if (debounce.TakeDue(GetTickCount64()))
+            PostMessageW(hwnd, WM_SHELL_CACHE_INVALIDATE, 0, 0);
     }
     for (auto& w : watches) {
         if (w.event) CloseHandle(w.event);
@@ -1147,22 +1174,38 @@ void StopShellRegistryWatch() {
 }
 
 void SeedShellVerbCache(AppState& s) {
-    std::unordered_map<std::wstring, std::vector<app::StaticVerb>> machine;
-    if (!app::LoadMachineStaticVerbCache(machine) || machine.empty()) return;
-    std::vector<std::wstring> extensions;
-    extensions.reserve(machine.size());
-    for (const auto& [ext, verbs] : machine) extensions.push_back(ext);
-    s.context_menu.MergeStaticCache(std::move(machine));
     HWND hwnd = s.hwnd;
-    std::thread([hwnd, extensions = std::move(extensions)] {
+    // A newer seed supersedes this one; stop instead of piling up readers.
+    const uint32_t generation = ++g_shell_seed_generation;
+    const uint32_t cache_generation = s.context_menu.cache_generation();
+    std::thread([hwnd, generation, cache_generation] {
+        // The cache file can be megabytes: read and parse it here, never on
+        // the UI thread, which only merges the result (WM_SHELL_VERB_SEED).
+        auto seed = std::make_unique<ShellVerbSeed>();
+        seed->generation = generation;
+        if (!app::LoadMachineStaticVerbCache(seed->machine) || seed->machine.empty()) return;
+        std::vector<std::wstring> extensions;
+        extensions.reserve(seed->machine.size());
+        for (const auto& [ext, verbs] : seed->machine) extensions.push_back(ext);
+        if (g_shell_seed_generation.load() != generation) return;
+        if (!PostMessageW(hwnd, WM_SHELL_VERB_SEED, 0, reinterpret_cast<LPARAM>(seed.get())))
+            return;
+        seed.release();
+        // Posted after the seed, so the merge always lands first.
         size_t n = 0;
         for (const auto& ext : extensions) {
-            if (n++ > 400) break;
-            auto* result = new ShellVerbsResult{ ext, app::EnumerateStaticVerbs(ext) };
+            if (n++ > 400 || g_shell_seed_generation.load() != generation) break;
+            auto* result = new ShellVerbsResult{ ext, app::EnumerateStaticVerbs(ext), cache_generation };
             if (!PostMessageW(hwnd, WM_SHELL_VERBS, 0, reinterpret_cast<LPARAM>(result)))
                 delete result;
         }
     }).detach();
+}
+
+void ApplyShellVerbSeed(AppState& s, ShellVerbSeed& seed) {
+    // Caches were invalidated after this seed was read; its successor follows.
+    if (seed.generation != g_shell_seed_generation.load()) return;
+    s.context_menu.MergeStaticCache(std::move(seed.machine));
 }
 
 // Fired on WM_RBUTTONDOWN (prefetch) and again on menu open (no-op when the
@@ -1303,6 +1346,7 @@ void ShowBackgroundContextMenu(AppState& s, POINT screen_pt) {
     view_options.can_group = !tab->content_results &&
         (view_options.filesystem || kind == L"recent" || view_options.group_virtual);
     view_options.group_by = tab->group_by;
+    view_options.can_apply_group_all = view_options.can_group && view_options.filesystem;
     if (IsRecycleTab(tab)) {
         const bool can_empty = tab->snapshot && tab->EntryCount() != 0;
         const std::wstring undoLabel = s.ops.UndoLabel();
@@ -1595,6 +1639,42 @@ bool ApplyViewToAllFolders(AppState& s, bool confirm) {
     return true;
 }
 
+bool ApplyGroupToAllFolders(AppState& s, int group_by, bool confirm) {
+    auto usable = [&s] {
+        const app::Tab* tab = ActiveTab(s);
+        return tab && !tab->content_results && !tab->current_path.empty() &&
+               !fs::IsVirtualPath(tab->current_path);
+    };
+    if (!usable()) return false;
+    const app::GroupBy by = app::GroupByFromInt(group_by);
+    if (by == app::GroupBy::Location) return false;  // multi-folder views only
+    if (confirm) {
+        ui::ConfirmDialogSpec spec;
+        spec.title = l10n::Get(l10n::StringId::ApplyViewAllTitle);
+        if (by == app::GroupBy::None) {
+            spec.message = l10n::Get(l10n::StringId::ApplyGroupNoneMessage);
+        } else {
+            static constexpr l10n::StringId kLabels[] = {
+                l10n::StringId::GroupNone, l10n::StringId::GroupByName, l10n::StringId::GroupByDate,
+                l10n::StringId::GroupByType, l10n::StringId::GroupBySize, l10n::StringId::GroupByTag};
+            wchar_t buf[512]{};
+            swprintf_s(buf, l10n::Get(l10n::StringId::ApplyGroupAllMessageFormat).c_str(),
+                       l10n::Get(kLabels[static_cast<int>(by)]).c_str());
+            spec.message = buf;
+        }
+        spec.confirm_text = l10n::Get(l10n::StringId::ApplyViewAllConfirm);
+        spec.cancel_text = l10n::Get(l10n::StringId::Cancel);
+        if (!ui::ShowConfirmDialog(s.hwnd, spec, s.darkMode, s.accentColor)) return false;
+        if (!usable()) return false;  // the modal dialog pumps messages
+    }
+    // Show it here first, then make it the default: ApplyToAll also drops the
+    // per-folder entry SetGroupBy just wrote, so this folder follows later changes.
+    SetGroupBy(s, static_cast<int>(by));
+    s.appPrefs.folder_groups.ApplyToAll(by);
+    s.appPrefs.Save();
+    return true;
+}
+
 // Drop groups with no remaining members (after mass closes / leave operations).
 void SetViewMode(AppState& s, ui::ViewMode mode) {
     app::Tab* tab = ActiveTab(s);
@@ -1692,6 +1772,8 @@ void ShowGroupDropdown(AppState& s) {
         std::wstring kind;
         app::ParsePulsePath(tab->current_path, &kind, nullptr);
         options.group_virtual = kind == L"search" || kind == L"saved-search" || kind == L"tag" || kind == L"recycle";
+        options.can_apply_group_all = !tab->content_results && !tab->current_path.empty() &&
+                                      !fs::IsVirtualPath(tab->current_path);
     }
     if (!options.can_group) return;
     if constexpr (kGroupWheel) {
@@ -2005,9 +2087,10 @@ void ShowOmnibar(AppState& s, OmnibarMode mode) {
     }
     if (q.kind == app::OmnibarQuery::Kind::Command) return;
     if (q.needle.empty()) return;
-    const std::wstring path = FormatAddressPath(q.needle);
+    bool shortcut = false;
+    const std::wstring path = AddressNavigationTarget(q.needle, &shortcut);
     const DWORD attrs = GetFileAttributesW(path.c_str());
-    if (app::LooksLikeFilesystemPath(q.needle) || attrs != INVALID_FILE_ATTRIBUTES)
+    if (shortcut || app::LooksLikeFilesystemPath(q.needle) || attrs != INVALID_FILE_ATTRIBUTES)
         NavigateTo(s, path);
 }
 void ShowRecyclePlaceMenu(AppState& s, POINT screen_pt) {
@@ -2039,47 +2122,16 @@ void ApplyAppWindowChrome(AppState& s) {
     s.backdropActive = ui::ApplyWindowEffect(s.hwnd, effect, s.darkMode);
 }
 
-bool PickImageFile(HWND owner, std::wstring& path) {
-    ui::ComPtr<IFileOpenDialog> dialog;
-    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
-                                IID_PPV_ARGS(&dialog)))) {
-        return false;
-    }
-    COMDLG_FILTERSPEC filters[] = {
-        { l10n::Get(l10n::StringId::Images).c_str(), L"*.jpg;*.jpeg;*.png;*.bmp;*.webp;*.jfif" },
-        { l10n::Get(l10n::StringId::AllFiles).c_str(), L"*.*" },
-    };
-    dialog->SetFileTypes(ARRAYSIZE(filters), filters);
-    dialog->SetTitle(l10n::Get(l10n::StringId::TooltipChooseBackground).c_str());
-    FILEOPENDIALOGOPTIONS options = 0;
-    dialog->GetOptions(&options);
-    dialog->SetOptions(options | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST | FOS_FORCEFILESYSTEM);
-    if (FAILED(dialog->Show(owner))) return false;
-    ui::ComPtr<IShellItem> item;
-    if (FAILED(dialog->GetResult(&item))) return false;
-    PWSTR file = nullptr;
-    if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &file)) || !file) return false;
-    path.assign(file);
-    CoTaskMemFree(file);
-    return !path.empty();
+bool PickImageFile(AppState& s, std::wstring& path) {
+    ui::FolderPickerSpec spec;
+    spec.mode = ui::PickerMode::Image;
+    return ui::ShowFolderPicker(s.hwnd, spec, s.darkMode, s.accentColor, path);
 }
 
-bool PickFolder(HWND owner, std::wstring& path, const wchar_t* title) {
-    ui::ComPtr<IFileOpenDialog> dialog;
-    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
-                                IID_PPV_ARGS(&dialog)))) return false;
-    dialog->SetTitle(title);
-    FILEOPENDIALOGOPTIONS options = 0;
-    dialog->GetOptions(&options);
-    dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
-    if (FAILED(dialog->Show(owner))) return false;
-    ui::ComPtr<IShellItem> item;
-    if (FAILED(dialog->GetResult(&item))) return false;
-    PWSTR folder = nullptr;
-    if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &folder)) || !folder) return false;
-    path.assign(folder);
-    CoTaskMemFree(folder);
-    return !path.empty();
+bool PickFolder(AppState& s, std::wstring& path, const wchar_t* title) {
+    ui::FolderPickerSpec spec;
+    spec.title = title ? title : L"";
+    return ui::ShowFolderPicker(s.hwnd, spec, s.darkMode, s.accentColor, path);
 }
 
 D2D1_COLOR_F ResolveAccentColor(const app::AppPrefs& prefs, bool dark) {
@@ -2297,6 +2349,21 @@ void SyncQuickPreview(AppState& s) {
 
 void EnsureEditVisuals(AppState& s);
 
+// The hosted edits use a GDI font sized from the typography settings.
+static void RefreshEditFonts(AppState& s) {
+    if (s.editFont) {
+        DeleteObject(s.editFont);
+        s.editFont = nullptr;
+    }
+    EnsureEditVisuals(s);
+    if (s.hwndAddressEdit)
+        SendMessageW(s.hwndAddressEdit, WM_SETFONT, reinterpret_cast<WPARAM>(s.editFont), TRUE);
+    if (s.hwndRenameEdit)
+        SendMessageW(s.hwndRenameEdit, WM_SETFONT, reinterpret_cast<WPARAM>(s.editFont), TRUE);
+    if (s.hwndTagRenameEdit)
+        SendMessageW(s.hwndTagRenameEdit, WM_SETFONT, reinterpret_cast<WPARAM>(s.editFont), TRUE);
+}
+
 void ApplySettingsEffects(AppState& s, app::SettingsEffect effects) {
     if (app::HasEffect(effects, app::SettingsEffect::FileVisibility)) {
         ForEachPane(s, [&](app::Pane& pane) {
@@ -2314,14 +2381,25 @@ void ApplySettingsEffects(AppState& s, app::SettingsEffect effects) {
         s.renderer.InvalidateWallpaper();
         ApplyAppWindowChrome(s);
     }
-    if (app::HasEffect(effects, app::SettingsEffect::RowHeight)) {
-        s.renderer.SetRowHeightDip(static_cast<float>(s.appPrefs.row_height));
+    if (app::HasEffect(effects, app::SettingsEffect::UiFontSize)) {
+        ui::typography::SetUiFontScale(s.appPrefs.ui_font_scale);
+        // Formats and cached widths carry the previous size.
+        ui::typography::InvalidateCaches();
+        s.compositor.RecreateTextFormats(s.scale);
+        s.renderer.InvalidateTypography();
+        RefreshEditFonts(s);
+    }
+    if (app::HasEffect(effects, app::SettingsEffect::RowHeight) ||
+        app::HasEffect(effects, app::SettingsEffect::UiFontSize)) {
+        const int row_height = app::EffectiveRowHeightDip(s.appPrefs.row_height, s.appPrefs.ui_font_scale);
+        s.renderer.SetRowHeightDip(static_cast<float>(row_height));
         if (s.menu)
-            s.menu->SetRowHeightDip(static_cast<float>(app::MenuRowHeightDip(s.appPrefs.row_height)));
+            s.menu->SetRowHeightDip(static_cast<float>(app::MenuRowHeightDip(row_height)));
     }
     if (app::HasEffect(effects, app::SettingsEffect::ListStyle)) {
         s.renderer.SetListStyle(s.appPrefs.list_smart_date, s.appPrefs.list_zebra_rows,
-                                s.appPrefs.list_size_bar, s.appPrefs.list_tag_name_color);
+                                s.appPrefs.list_size_bar, s.appPrefs.list_tag_name_color,
+                                s.appPrefs.list_selection_outline);
         s.renderer.SetDetailsColumns(s.appPrefs.details_columns);
         s.renderer.SetRowActions(app::RowActionMask(s.ctxMenuPrefs.builtin_hidden));
     }
@@ -2345,7 +2423,7 @@ void ApplySettingsEffects(AppState& s, app::SettingsEffect effects) {
     if (app::HasEffect(effects, app::SettingsEffect::TrayDeckIcon))
         s.renderer.SetTrayIconDip(static_cast<float>(s.appPrefs.tray_icon_size));
     if (app::HasEffect(effects, app::SettingsEffect::TrayVisibility))
-        s.tray_controller.SetVisible(s.appPrefs.keep_running_on_close || s.appPrefs.global_search_enabled);
+        s.tray_controller.SetVisible(WantsTrayIcon(s, s.hidden_to_tray));
     if (app::HasEffect(effects, app::SettingsEffect::GlobalSearch))
         ApplyGlobalSearchSettings(s);
     if (app::HasEffect(effects, app::SettingsEffect::StatusBarPerformance))
@@ -2356,17 +2434,7 @@ void ApplySettingsEffects(AppState& s, app::SettingsEffect effects) {
         ui::typography::InvalidateCaches();
         s.compositor.RecreateTextFormats(s.scale);
         s.renderer.InvalidateTypography();
-        if (s.editFont) {
-            DeleteObject(s.editFont);
-            s.editFont = nullptr;
-        }
-        EnsureEditVisuals(s);
-        if (s.hwndAddressEdit)
-            SendMessageW(s.hwndAddressEdit, WM_SETFONT, reinterpret_cast<WPARAM>(s.editFont), TRUE);
-        if (s.hwndRenameEdit)
-            SendMessageW(s.hwndRenameEdit, WM_SETFONT, reinterpret_cast<WPARAM>(s.editFont), TRUE);
-        if (s.hwndTagRenameEdit)
-            SendMessageW(s.hwndTagRenameEdit, WM_SETFONT, reinterpret_cast<WPARAM>(s.editFont), TRUE);
+        RefreshEditFonts(s);
         if (s.pane) {
             ForEachPane(s, [&](app::Pane& pane) {
                 if (IsSettingsTab(pane.ActiveTab()))

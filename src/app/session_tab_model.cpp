@@ -80,7 +80,7 @@ void RestoreLayoutTab(LayoutTab& tab, const LayoutTabSnapshot& snapshot,
     tab.panes.clear();
     tab.root.reset();
     for (const auto& saved : snapshot.panes) {
-        if (saved.path.empty()) continue;
+        // An empty saved path is the valid This PC location, not a missing pane.
         auto pane = std::make_unique<Pane>();
         pane->view.view_mode = saved.view;
         pane->view.details_column_dividers = saved.columns;
@@ -106,7 +106,7 @@ void RestoreLayoutTab(LayoutTab& tab, const LayoutTabSnapshot& snapshot,
         pane->view.search_column_dividers = source.search_column_dividers;
         pane->view.column_layout = source.column_layout;
         pane->view.column_widths_dip = source.column_widths_dip;
-        const std::wstring clone = source.current_path.empty() ? L"C:\\" : source.current_path;
+        const std::wstring clone = source.current_path;
         pane->view.current_path = clone;
         Tab* raw = pane->ActiveTab();
         tab.panes.push_back(std::move(pane));

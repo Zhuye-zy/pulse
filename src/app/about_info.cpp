@@ -178,7 +178,22 @@ static std::vector<ui::ReleaseNoteView> LoadReleaseNotes(bool english) {
 const std::vector<ui::ReleaseNoteView>& EmbeddedReleaseNotes() {
     static const std::vector<ui::ReleaseNoteView> chinese = LoadReleaseNotes(false);
     static const std::vector<ui::ReleaseNoteView> english = LoadReleaseNotes(true);
-    return l10n::effective_language() == l10n::Language::EnUS ? english : chinese;
+    switch (l10n::effective_language()) {
+    case l10n::Language::EnUS:
+        return english;
+    case l10n::Language::ZhTW: {
+        // Release notes ship in Simplified Chinese and English only.
+        static const std::vector<ui::ReleaseNoteView> traditional = [] {
+            auto notes = chinese;
+            for (auto& note : notes)
+                for (auto& line : note.lines) line = l10n::ToTraditional(line);
+            return notes;
+        }();
+        return traditional;
+    }
+    default:
+        return chinese;
+    }
 }
 
 std::vector<AboutRow> BuildAboutRows(bool index_service, bool index_installed, float scale) {

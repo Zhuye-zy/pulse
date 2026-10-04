@@ -21,7 +21,7 @@ constexpr float kChromeBarHeight = 56.0f;
 constexpr bool kCodecHint = true;
 constexpr float kRates[] = {1.0f, 1.25f, 1.5f, 2.0f, 0.5f};
 const wchar_t* Label(const wchar_t* chinese, const wchar_t* english) {
-    return l10n::effective_language() == l10n::Language::ZhCN ? chinese : english;
+    return l10n::Pick(chinese, english);
 }
 bool Contains(const D2D1_RECT_F& rect, POINT point) {
     return point.x >= rect.left && point.x < rect.right &&
@@ -700,47 +700,43 @@ bool QuickPreviewWindow::CodecCardClick(POINT point) {
 void QuickPreviewWindow::DrawCodecCard(ID2D1DeviceContext* dc, const D2D1_RECT_F& content,
                                        const VideoPreview::State& state,
                                        ID2D1SolidColorBrush* brush) {
-    const bool zh = l10n::effective_language() == l10n::Language::ZhCN;
+    const bool zh = l10n::IsChinese();
     CodecCardText t;
-    t.title = zh ? L"这台电脑无法显示此视频的画面" : L"Can't show this video on this PC";
-    t.lead = zh ? L"视频使用 " : L"It's encoded as ";
+    t.title = l10n::Pick(L"这台电脑无法显示此视频的画面", L"Can't show this video on this PC");
+    t.lead = l10n::Pick(L"视频使用 ", L"It's encoded as ");
     t.name = state.codec_name;
-    t.tail = zh ? L" 编码，系统中没有对应的解码器。\n声音仍可正常播放。"
-                : L" and no decoder for it is installed.\nThe sound still plays.";
+    t.tail = l10n::Pick(L" 编码，系统中没有对应的解码器。\n声音仍可正常播放。", L" and no decoder for it is installed.\nThe sound still plays.");
     t.store_id = state.store_id;
     if (state.store_id)
-        t.get = zh ? L"获取 " + state.codec + L" 视频扩展" : L"Get " + state.codec + L" Video Extension";
-    t.hint = zh ? L"安装后重新打开预览即可看到画面" : L"Reopen the preview after installing";
+        t.get = zh ? l10n::Cn(L"获取 ") + state.codec + l10n::Cn(L" 视频扩展") : L"Get " + state.codec + L" Video Extension";
+    t.hint = l10n::Pick(L"安装后重新打开预览即可看到画面", L"Reopen the preview after installing");
     DrawCodecCardText(dc, content, t, brush);
 }
 
 // HEIF / HEIC / AVIF without the Store extension that decodes them (mockup ⑥).
 void QuickPreviewWindow::DrawImageCodecCard(ID2D1DeviceContext* dc, const D2D1_RECT_F& content,
                                             const std::wstring& codec, ID2D1SolidColorBrush* brush) {
-    const bool zh = l10n::effective_language() == l10n::Language::ZhCN;
     CodecCardText t;
     t.picture = true;
-    t.title = zh ? L"这台电脑无法显示此图片" : L"Can't show this picture on this PC";
-    t.lead = zh ? L"图片使用 " : L"It uses ";
-    t.tail = zh ? L" 格式，系统中没有对应的解码器。" : L" and no decoder for it is installed.";
+    t.title = l10n::Pick(L"这台电脑无法显示此图片", L"Can't show this picture on this PC");
+    t.lead = l10n::Pick(L"图片使用 ", L"It uses ");
+    t.tail = l10n::Pick(L" 格式，系统中没有对应的解码器。", L" and no decoder for it is installed.");
     if (codec == L"av1") {
         t.name = L"AVIF";
         t.store_id = L"9MVZQVXJBQ9V";
-        t.get = zh ? L"获取 AV1 视频扩展" : L"Get AV1 Video Extension";
-        t.hint = zh ? L"安装后重新打开预览即可看到图片" : L"Reopen the preview after installing";
+        t.get = l10n::Pick(L"获取 AV1 视频扩展", L"Get AV1 Video Extension");
+        t.hint = l10n::Pick(L"安装后重新打开预览即可看到图片", L"Reopen the preview after installing");
     } else if (codec == L"hevc") {
         t.name = L"HEIF / HEIC";
-        t.tail = zh ? L" 格式，照片使用 HEVC 编码，还需要 HEVC 视频扩展。"
-                    : L"; its photo is HEVC-encoded and needs the HEVC Video Extension.";
+        t.tail = l10n::Pick(L" 格式，照片使用 HEVC 编码，还需要 HEVC 视频扩展。", L"; its photo is HEVC-encoded and needs the HEVC Video Extension.");
         t.store_id = L"9NMZLZ57R3T7";
-        t.get = zh ? L"获取 HEVC 视频扩展" : L"Get HEVC Video Extension";
-        t.hint = zh ? L"安装后重新打开预览即可看到图片" : L"Reopen the preview after installing";
+        t.get = l10n::Pick(L"获取 HEVC 视频扩展", L"Get HEVC Video Extension");
+        t.hint = l10n::Pick(L"安装后重新打开预览即可看到图片", L"Reopen the preview after installing");
     } else {
         t.name = L"HEIF / HEIC";
         t.store_id = L"9PMMSR1CGPWG";
-        t.get = zh ? L"获取 HEIF 图像扩展" : L"Get HEIF Image Extensions";
-        t.hint = zh ? L"iPhone 照片常用这个格式；部分 HEIC 还需要 HEVC 视频扩展"
-                    : L"Common for iPhone photos; some HEIC also need the HEVC Video Extension";
+        t.get = l10n::Pick(L"获取 HEIF 图像扩展", L"Get HEIF Image Extensions");
+        t.hint = l10n::Pick(L"iPhone 照片常用这个格式；部分 HEIC 还需要 HEVC 视频扩展", L"Common for iPhone photos; some HEIC also need the HEVC Video Extension");
     }
     DrawCodecCardText(dc, content, t, brush);
 }
@@ -752,7 +748,6 @@ void QuickPreviewWindow::DrawCodecCardText(ID2D1DeviceContext* dc, const D2D1_RE
     auto* caption = compositor_.SmallFormat();
     if (!dc || !brush || !factory || !title_format || !caption) return;
     const float s = scale_;
-    const bool zh = l10n::effective_language() == l10n::Language::ZhCN;
     const auto original = brush->GetColor();
     const auto tint = [&](float alpha) {
         auto color = original;
@@ -764,7 +759,7 @@ void QuickPreviewWindow::DrawCodecCardText(ID2D1DeviceContext* dc, const D2D1_RE
     const std::wstring& lead = text.lead;
     const std::wstring body = text.lead + text.name + text.tail;
     const std::wstring& get = text.get;
-    const std::wstring open = zh ? L"用默认应用打开" : L"Open in default app";
+    const std::wstring open = l10n::Pick(L"用默认应用打开", L"Open in default app");
     const std::wstring& hint = text.hint;
 
     const float width = (std::min)(440.0f * s, content.right - content.left - 32.0f * s);

@@ -218,7 +218,7 @@ HitTestResult MainRenderer::HitTest(const WindowViewModel& vm, const D2D1_RECT_F
             }
         }
         if (ContainsPt(lay.content, x, y)) {
-            for(int i=0;i<3;++i) if(ContainsPt(lay.disclosure[i],x,y)) {
+            for(int i=0;i<4;++i) if(ContainsPt(lay.disclosure[i],x,y)) {
                 r.region=HitTestResult::SettingsDisclosure;r.index=i;return r;
             }
             for(int i=0;i<kPreviewCodecCount;++i) if(ContainsPt(lay.preview_codec_button[i],x,y)) {
@@ -231,12 +231,23 @@ HitTestResult MainRenderer::HitTest(const WindowViewModel& vm, const D2D1_RECT_F
                 r.region=HitTestResult::SettingsDropdown;r.index=ContainsPt(lay.effect_choice,x,y) ? 0 : 1;return r;
             }
             if(ContainsPt(lay.performance_row,x,y)) {r.region=HitTestResult::SettingsToggle;r.index=4;return r;}
-            for(int list_row=0;list_row<4;++list_row)
-                if(ContainsPt(lay.list_style_row[list_row],x,y)) {r.region=HitTestResult::SettingsToggle;r.index=list_row<3 ? 17+list_row : 22;return r;}
+            for(int list_row=0;list_row<5;++list_row)
+                if(ContainsPt(lay.list_style_row[list_row],x,y)) {r.region=HitTestResult::SettingsToggle;r.index=list_row<3 ? 17+list_row : (list_row==3 ? 22 : 33);return r;}
             const D2D1_RECT_F actions[]={lay.content_pause,lay.content_options,lay.content_rebuild};
             for(int i=0;i<3;++i) if(ContainsPt(actions[i],x,y)) {r.region=HitTestResult::SettingsContentAction;r.index=i+1;return r;}
 
             if (vm.settings_page == 0) {
+                const D2D1_RECT_F integration_rows[]={lay.default_manager_row,lay.startup_row[2],
+                    lay.win_e_row,lay.this_pc_row,lay.explorer_windows_row};
+                for(int i=0;i<5;++i) if(ContainsPt(integration_rows[i],x,y)) {
+                    r.region=HitTestResult::SettingsIntegration;r.index=i;return r;
+                }
+                if(vm.settings_integration_can_retry && ContainsPt(lay.integration_retry,x,y)) {
+                    r.region=HitTestResult::SettingsIntegration;r.index=5;return r;
+                }
+                if(vm.settings_integration_can_restore && ContainsPt(lay.integration_restore,x,y)) {
+                    r.region=HitTestResult::SettingsIntegration;r.index=6;return r;
+                }
                 if (vm.settings_bloom) {
                     vm.settings_bloom->SetDisk(lay.accent_picker);
                     const int dot = vm.settings_bloom->HitDot(x, y);
@@ -260,9 +271,23 @@ HitTestResult MainRenderer::HitTest(const WindowViewModel& vm, const D2D1_RECT_F
                         return r;
                     }
                 }
+                for (int i = 0; i < 4; ++i) {
+                    if (ContainsPt(lay.ui_font_size_row[i], x, y)) {
+                        r.region = HitTestResult::SettingsUiFontSize;
+                        r.index = i;
+                        return r;
+                    }
+                }
                 for (int i = 0; i < 3; ++i) {
                     if (ContainsPt(lay.folder_sort_row[i], x, y)) {
                         r.region = HitTestResult::SettingsFolderSort;
+                        r.index = i;
+                        return r;
+                    }
+                }
+                for (int i = 0; i < 3; ++i) {
+                    if (ContainsPt(lay.notify_icon_row[i], x, y)) {
+                        r.region = HitTestResult::SettingsNotifyIcon;
                         r.index = i;
                         return r;
                     }
@@ -362,13 +387,8 @@ HitTestResult MainRenderer::HitTest(const WindowViewModel& vm, const D2D1_RECT_F
                 if (ContainsPt(lay.shell_tags_row, x, y)) {
                     r.region = HitTestResult::SettingsToggle; r.index = 21; return r;
                 }
-                if (ContainsPt(lay.win_e_row, x, y)) {
-                    r.region = HitTestResult::SettingsToggle; r.index = 20; return r;
-                }
-                if (ContainsPt(lay.blank_click_row, x, y)) {
-                    r.region = HitTestResult::SettingsToggle;
-                    r.index = 7;
-                    return r;
+                for (int i = 0; i < 3; ++i) if (ContainsPt(lay.blank_click_choice[i], x, y)) {
+                    r.region = HitTestResult::SettingsBlankClick; r.index = i; return r;
                 }
                 if (ContainsPt(lay.change_tracking_row, x, y)) {
                     r.region = HitTestResult::SettingsToggle; r.index = 8; return r;
@@ -376,12 +396,21 @@ HitTestResult MainRenderer::HitTest(const WindowViewModel& vm, const D2D1_RECT_F
                 for (int i = 0; i < 3; ++i) if (ContainsPt(lay.change_days[i], x, y)) {
                     r.region = HitTestResult::SettingsChangeDays; r.index = i; return r;
                 }
-                for (int i = 0; i < 3; ++i) {
+                for (int i = 0; i < 2; ++i) {
                     if (ContainsPt(lay.startup_row[i], x, y)) {
                         r.region = HitTestResult::SettingsToggle;
                         r.index = i + 1;
                         return r;
                     }
+                }
+                if (ContainsPt(lay.close_last_tab_row, x, y)) {
+                    r.region = HitTestResult::SettingsToggle; r.index = 26; return r;
+                }
+                if (ContainsPt(lay.confirm_delete_row, x, y)) {
+                    r.region = HitTestResult::SettingsToggle; r.index = 32; return r;
+                }
+                if (ContainsPt(lay.start_in_tray_row, x, y)) {
+                    r.region = HitTestResult::SettingsToggle; r.index = 27; return r;
                 }
             } else if (vm.settings_page == 1) {
                 if (ContainsPt(lay.global_search_row, x, y)) {
@@ -490,6 +519,9 @@ HitTestResult MainRenderer::HitTest(const WindowViewModel& vm, const D2D1_RECT_F
                         r.index = i;
                         return r;
                     }
+                }
+                if (ContainsPt(lay.update_auto_row, x, y)) {
+                    r.region = HitTestResult::SettingsToggle; r.index = 31; return r;
                 }
             } else if (vm.settings_page == 4) {
                 for (int i = 0; i < 3; ++i) {
@@ -677,6 +709,13 @@ HitTestResult MainRenderer::HitTest(const WindowViewModel& vm, const D2D1_RECT_F
                 r.index = slot.group;
                 r.sidebar_section = vm.sidebar[slot.group].id;
                 r.label = vm.sidebar[slot.group].header;
+                const SidebarGroup& group = vm.sidebar[slot.group];
+                if (r.region == HitTestResult::SidebarHeader && group.navigable) {
+                    // #80: sub_index 1 = the title link; the rest folds.
+                    const D2D1_RECT_F title = painter_.SidebarSectionHeaderTitleRect(
+                        slot.rc, group.header, !group.icon_glyph.empty());
+                    if (ContainsPt(title, x, y)) r.sub_index = 1;
+                }
                 return r;
             }
             if (slot.kind == SidebarSlot::TrayPanel) {
@@ -895,11 +934,13 @@ HitTestResult MainRenderer::HitTest(const WindowViewModel& vm, const D2D1_RECT_F
             paneRc = PaneBodyBounds(paneVm, paneRect);
         }
         const float banner = PaneBannerHeight(paneVm, paneRc.right - paneRc.left, scale_, compositor_);
-        if (paneVm.is_content_search && banner > 0) {
+        if ((paneVm.is_content_search || paneVm.network_live_action) && banner > 0) {
             const float action_width = std::min(144.0f * scale_, (paneRc.right - paneRc.left - 16 * scale_) * 0.4f);
             if (x >= paneRc.right - 8 * scale_ - action_width && x < paneRc.right - 8 * scale_ &&
                 y >= paneRc.top + pane_header_height_ && y < paneRc.top + pane_header_height_ + banner - 4 * scale_) {
-                out.region = HitTestResult::ContentIndexManage;
+                out.region = paneVm.is_content_search ? HitTestResult::ContentIndexManage
+                                                      : HitTestResult::NetworkIndexAdd;
+                out.index = paneIndex;
                 return out;
             }
         }

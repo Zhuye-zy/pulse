@@ -7,7 +7,7 @@ $version = (Get-Content (Join-Path $repo 'version.txt') -Raw).Trim()
 if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
 & "$PSScriptRoot/check_release_payload.ps1" -BuildDir $build
 $files = @('pulse.exe', 'Pulse.Index.exe', 'Pulse.Document.exe', 'Pulse.Preview.exe',
-    'pulse_shell.exe', 'lumatext.dll', 'pdfium.dll')
+    'pulse_shell.exe', 'pulse_integration.exe', 'lumatext.dll', 'pdfium.dll')
 foreach ($file in $files) {
     if (-not (Test-Path -LiteralPath (Join-Path $build $file))) { throw "Missing portable dependency: $file" }
 }

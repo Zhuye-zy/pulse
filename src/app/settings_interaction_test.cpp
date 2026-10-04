@@ -47,7 +47,8 @@ int RunSettingsInteractionTest(AppState& s,const wchar_t* output) {
         HandleSettingsControl(s,control);
     };
     H dropdown;dropdown.region=H::SettingsDropdown;dropdown.index=1;
-    select(dropdown,2);check(s.appPrefs.language==L"en-US","language dropdown keyboard selection applies immediately");
+    select(dropdown,2);check(s.appPrefs.language==L"zh-TW","language dropdown offers Traditional Chinese after Simplified");
+    select(dropdown,3);check(s.appPrefs.language==L"en-US","language dropdown keyboard selection applies immediately");
     dropdown.index=0;select(dropdown,0);check(s.appPrefs.window_effect==ui::WindowEffectId(ui::WindowEffect::None),"window effect dropdown applies selected material");
     action.index=2;select(action,1);
     check(wait([&]{auto c=s.contentSearch.GetConfig();return c.roots.size()==2 &&

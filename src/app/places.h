@@ -97,6 +97,7 @@ public:
     std::vector<RecentItem> recent_items;
     int active_workspace = -1;
     bool persist = true; // self-test can disable disk writes
+    bool load_failed = false;
 
     void EnsureDefaults();
     bool Load();

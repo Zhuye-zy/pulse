@@ -12,6 +12,7 @@ enum class Language {
     System,
     ZhCN,
     EnUS,
+    ZhTW,   // Traditional Chinese, Taiwan vocabulary.
 };
 
 enum class StringId : UINT {
@@ -228,6 +229,7 @@ enum class StringId : UINT {
     PreviewGrabHint = IDS_PREVIEW_GRAB_HINT,
     SettingsBlankClickBack = IDS_SETTINGS_BLANK_CLICK_BACK,
     SettingsBlankClickBackDesc = IDS_SETTINGS_BLANK_CLICK_BACK_DESC,
+    SettingsBlankClickOff = IDS_SETTINGS_BLANK_CLICK_OFF,
     Settings = IDS_SETTINGS,
     SettingsGeneral = IDS_SETTINGS_GENERAL,
     SettingsSearchIndex = IDS_SETTINGS_SEARCH_INDEX,
@@ -256,6 +258,7 @@ enum class StringId : UINT {
     SettingsLanguageDesc = IDS_SETTINGS_LANGUAGE_DESC,
     LanguageSystem = IDS_LANGUAGE_SYSTEM,
     LanguageZhCN = IDS_LANGUAGE_ZH_CN,
+    LanguageZhTW = IDS_LANGUAGE_ZH_TW,
     LanguageEnUS = IDS_LANGUAGE_EN_US,
     SettingsWallpaper = IDS_SETTINGS_WALLPAPER,
     SettingsWallpaperDesc = IDS_SETTINGS_WALLPAPER_DESC,
@@ -266,6 +269,8 @@ enum class StringId : UINT {
     SettingsLaunchDesc = IDS_SETTINGS_LAUNCH_DESC,
     SettingsKeepRunning = IDS_SETTINGS_KEEP_RUNNING,
     SettingsKeepRunningDesc = IDS_SETTINGS_KEEP_RUNNING_DESC,
+    SettingsStartInTray = IDS_SETTINGS_START_IN_TRAY,
+    SettingsStartInTrayDesc = IDS_SETTINGS_START_IN_TRAY_DESC,
     SettingsOpenFolders = IDS_SETTINGS_OPEN_FOLDERS,
     SettingsOpenFoldersDesc = IDS_SETTINGS_OPEN_FOLDERS_DESC,
     QuickPreview = IDS_QUICK_PREVIEW,
@@ -283,6 +288,7 @@ enum class StringId : UINT {
     Search = IDS_SEARCH,
     Tag = IDS_TAG,
     Desktop = IDS_DESKTOP,
+    Downloads = IDS_DOWNLOADS,
     LocalDisk = IDS_LOCAL_DISK,
     SidebarWorkspaces = IDS_SIDEBAR_WORKSPACES,
     SidebarQuickAccess = IDS_SIDEBAR_QUICK_ACCESS,
@@ -548,6 +554,7 @@ enum class StringId : UINT {
     UpdateDownloadProgress = IDS_UPDATE_DOWNLOAD_PROGRESS,
     UpdateDownloadUnknown = IDS_UPDATE_DOWNLOAD_UNKNOWN,
     UpdateVerifying = IDS_UPDATE_VERIFYING,
+    UpdateWaitingOperations = IDS_UPDATE_WAITING_OPERATIONS,
     UpdateLaunching = IDS_UPDATE_LAUNCHING,
     UpdateInstallingStatus = IDS_UPDATE_INSTALLING_STATUS,
     DateWeekdays = IDS_DATE_WEEKDAYS,
@@ -572,6 +579,14 @@ enum class StringId : UINT {
     OpenDefaultLocation = IDS_OPEN_DEFAULT_LOCATION,
     SettingsNewTabOpen = IDS_SETTINGS_NEW_TAB_OPEN,
     SettingsNewTabOpenDesc = IDS_SETTINGS_NEW_TAB_OPEN_DESC,
+    SettingsCloseLastTab = IDS_SETTINGS_CLOSE_LAST_TAB,
+    SettingsCloseLastTabDesc = IDS_SETTINGS_CLOSE_LAST_TAB_DESC,
+    LockedItemTitle = IDS_LOCKED_ITEM_TITLE,
+    LockedItemMessage = IDS_LOCKED_ITEM_MESSAGE,
+    LockedItemEndHint = IDS_LOCKED_ITEM_END_HINT,
+    LockedItemCloseHint = IDS_LOCKED_ITEM_CLOSE_HINT,
+    LockedItemEndRetry = IDS_LOCKED_ITEM_END_RETRY,
+    LockedItemRetry = IDS_LOCKED_ITEM_RETRY,
     NewTabOpenCurrent = IDS_NEW_TAB_OPEN_CURRENT,
     ColumnCreated = IDS_COLUMN_CREATED,
     ColumnAccessed = IDS_COLUMN_ACCESSED,
@@ -608,6 +623,36 @@ enum class StringId : UINT {
     ContextRowMore = IDS_CONTEXT_ROW_MORE,
     GlobalSearchHandoff = IDS_GLOBAL_SEARCH_HANDOFF,
     GlobalSearchTruncatedShort = IDS_GLOBAL_SEARCH_TRUNCATED_SHORT,
+    ConfirmMoreItemsFormat = IDS_CONFIRM_MORE_ITEMS_FORMAT,
+    RecycleDeleteConfirmFormat = IDS_RECYCLE_DELETE_CONFIRM_FORMAT,
+    PermanentDeleteOne = IDS_PERMANENT_DELETE_ONE,
+    PermanentDeleteManyFormat = IDS_PERMANENT_DELETE_MANY_FORMAT,
+    DiagnosticsIncludeServiceYes = IDS_DIAGNOSTICS_INCLUDE_SERVICE_YES,
+    DiagnosticsIncludeServiceNo = IDS_DIAGNOSTICS_INCLUDE_SERVICE_NO,
+    ConfirmContinue = IDS_CONFIRM_CONTINUE,
+    RecoveryRetry = IDS_RECOVERY_RETRY,
+    RecoveryDiscard = IDS_RECOVERY_DISCARD,
+    PickerSelectFolder = IDS_PICKER_SELECT_FOLDER,
+    PickerSelect = IDS_PICKER_SELECT,
+    PickerQuickAccess = IDS_PICKER_QUICK_ACCESS,
+    PickerDocuments = IDS_PICKER_DOCUMENTS,
+    PickerPictures = IDS_PICKER_PICTURES,
+    PickerHome = IDS_PICKER_HOME,
+    PickerNoFolders = IDS_PICKER_NO_FOLDERS,
+    PickerNoFoldersDesc = IDS_PICKER_NO_FOLDERS_DESC,
+    PickerNoImages = IDS_PICKER_NO_IMAGES,
+    PickerNoImagesDesc = IDS_PICKER_NO_IMAGES_DESC,
+    PickerOpenFailed = IDS_PICKER_OPEN_FAILED,
+    PickerNotFound = IDS_PICKER_NOT_FOUND,
+    PickerWillSelect = IDS_PICKER_WILL_SELECT,
+    PickerPathPlaceholder = IDS_PICKER_PATH_PLACEHOLDER,
+    PickerLoading = IDS_PICKER_LOADING,
+    PickerTitleFolder = IDS_PICKER_TITLE_FOLDER,
+    PickerDriveFreeFormat = IDS_PICKER_DRIVE_FREE_FORMAT,
+    PickerPickImageHint = IDS_PICKER_PICK_IMAGE_HINT,
+    SettingsAutoUpdate = IDS_SETTINGS_AUTO_UPDATE,
+    SettingsAutoUpdateDesc = IDS_SETTINGS_AUTO_UPDATE_DESC,
+    UpdateDescManual = IDS_UPDATE_DESC_MANUAL,
     DetailsColumnNoRoom = IDS_DETAILS_COLUMN_NO_ROOM,
     DetailsColumnNoRoomTip = IDS_DETAILS_COLUMN_NO_ROOM_TIP,
     DetailsColumnNotInSearch = IDS_DETAILS_COLUMN_NOT_IN_SEARCH,
@@ -902,6 +947,72 @@ enum class StringId : UINT {
     ShellRunAs = IDS_EXTRA_SHELLRUNAS,
     ShellOpenWith = IDS_EXTRA_SHELLOPENWITH,
     ShellOpenApp = IDS_SHELL_OPEN_APP,
+    SettingsDefaultManager = IDS_SETTINGS_DEFAULT_MANAGER,
+    SettingsIntegration = IDS_SETTINGS_INTEGRATION,
+    IntegrationMasterDesc = IDS_INTEGRATION_MASTER_DESC,
+    IntegrationScope = IDS_INTEGRATION_SCOPE,
+    IntegrationScopeDesc = IDS_INTEGRATION_SCOPE_DESC,
+    IntegrationFolders = IDS_INTEGRATION_FOLDERS,
+    IntegrationFoldersDesc = IDS_INTEGRATION_FOLDERS_DESC,
+    IntegrationExperimental = IDS_INTEGRATION_EXPERIMENTAL,
+    IntegrationExperimentalDesc = IDS_INTEGRATION_EXPERIMENTAL_DESC,
+    IntegrationOff = IDS_INTEGRATION_OFF,
+    IntegrationOn = IDS_INTEGRATION_ON,
+    IntegrationPartial = IDS_INTEGRATION_PARTIAL,
+    IntegrationFailed = IDS_INTEGRATION_FAILED,
+    IntegrationInactiveHint = IDS_INTEGRATION_INACTIVE_HINT,
+    IntegrationRunningHint = IDS_INTEGRATION_RUNNING_HINT,
+    IntegrationRetry = IDS_INTEGRATION_RETRY,
+    IntegrationRestore = IDS_INTEGRATION_RESTORE,
+    IntegrationMaster = IDS_INTEGRATION_MASTER,
+    IntegrationOnCount = IDS_INTEGRATION_ON_COUNT,
+    IntegrationNone = IDS_INTEGRATION_NONE,
+    IntegrationNoneHint = IDS_INTEGRATION_NONE_HINT,
+    IntegrationExperimentalTag = IDS_INTEGRATION_EXPERIMENTAL_TAG,
+    IntegrationFactRunning = IDS_INTEGRATION_FACT_RUNNING,
+    IntegrationFactShift = IDS_INTEGRATION_FACT_SHIFT,
+    IntegrationFactWin11 = IDS_INTEGRATION_FACT_WIN11,
+    IntegrationHintLaunch = IDS_INTEGRATION_HINT_LAUNCH,
+    IntegrationHintKeep = IDS_INTEGRATION_HINT_KEEP,
+    IntegrationFailTitle = IDS_INTEGRATION_FAIL_TITLE,
+    IntegrationDriftTitle = IDS_INTEGRATION_DRIFT_TITLE,
+    IntegrationDriftDesc = IDS_INTEGRATION_DRIFT_DESC,
+    IntegrationReapply = IDS_INTEGRATION_REAPPLY,
+    NetworkSearchSnapshot = IDS_NETWORK_SEARCH_SNAPSHOT,
+    NetworkLiveTitle = IDS_NETWORK_LIVE_TITLE,
+    NetworkLiveRunning = IDS_NETWORK_LIVE_RUNNING,
+    NetworkLiveDone = IDS_NETWORK_LIVE_DONE,
+    NetworkLiveDoneDrive = IDS_NETWORK_LIVE_DONE_DRIVE,
+    NetworkLiveAdd = IDS_NETWORK_LIVE_ADD,
+    NetworkLiveAdded = IDS_NETWORK_LIVE_ADDED,
+    NetworkLiveAddedMessage = IDS_NETWORK_LIVE_ADDED_MSG,
+    NetworkLiveAddFailed = IDS_NETWORK_LIVE_ADD_FAILED,
+    SettingsConfirmDelete = IDS_SETTINGS_CONFIRM_DELETE,
+    SettingsConfirmDeleteDesc = IDS_SETTINGS_CONFIRM_DELETE_DESC,
+    RecycleConfirmOne = IDS_RECYCLE_CONFIRM_ONE,
+    RecycleConfirmManyFormat = IDS_RECYCLE_CONFIRM_MANY_FORMAT,
+    ApplyGroupAllFolders = IDS_APPLY_GROUP_ALL_FOLDERS,
+    ApplyGroupAllShort = IDS_APPLY_GROUP_ALL_SHORT,
+    ApplyGroupAllMessageFormat = IDS_APPLY_GROUP_ALL_MESSAGE_FORMAT,
+    ApplyGroupNoneMessage = IDS_APPLY_GROUP_NONE_MESSAGE,
+    SettingsNotifyIcon = IDS_SETTINGS_NOTIFY_ICON,
+    SettingsNotifyIconDesc = IDS_SETTINGS_NOTIFY_ICON_DESC,
+    NotifyIconAlways = IDS_NOTIFY_ICON_ALWAYS,
+    NotifyIconBackground = IDS_NOTIFY_ICON_BACKGROUND,
+    NotifyIconNever = IDS_NOTIFY_ICON_NEVER,
+    ExitPulse = IDS_EXIT_PULSE,
+    ListSelectionOutline = IDS_LIST_SELECTION_OUTLINE,
+    ListSelectionOutlineDesc = IDS_LIST_SELECTION_OUTLINE_DESC,
+    SidebarHideCloud = IDS_SIDEBAR_HIDE_CLOUD,
+    SidebarCloudHiddenHint = IDS_SIDEBAR_CLOUD_HIDDEN_HINT,
+    SidebarShowHidden = IDS_SIDEBAR_SHOW_HIDDEN,
+    SettingsDefaultManagerDesc = IDS_SETTINGS_DEFAULT_MANAGER_DESC,
+    SettingsDefaultManagerPartial = IDS_SETTINGS_DEFAULT_MANAGER_PARTIAL,
+    SettingsTakeoverFolders = IDS_SETTINGS_TAKEOVER_FOLDERS,
+    SettingsThisPc = IDS_SETTINGS_THIS_PC,
+    SettingsThisPcDesc = IDS_SETTINGS_THIS_PC_DESC,
+    SettingsExplorerWindows = IDS_SETTINGS_EXPLORER_WINDOWS,
+    SettingsExplorerWindowsDesc = IDS_SETTINGS_EXPLORER_WINDOWS_DESC,
     TagNetworkLocation = IDS_TAG_NETWORK_LOCATION,
     TagThisLocation = IDS_TAG_THIS_LOCATION,
     TagCreateFormat = IDS_TAG_CREATE_FORMAT,
@@ -1002,6 +1113,12 @@ enum class StringId : UINT {
     TextRenderAuto = IDS_TEXT_RENDER_AUTO,
     TextRenderSharp = IDS_TEXT_RENDER_SHARP,
     TextRenderSmooth = IDS_TEXT_RENDER_SMOOTH,
+    SettingsUiFontSize = IDS_SETTINGS_UI_FONT_SIZE,
+    SettingsUiFontSizeDesc = IDS_SETTINGS_UI_FONT_SIZE_DESC,
+    UiFontSmall = IDS_UI_FONT_SMALL,
+    UiFontDefault = IDS_UI_FONT_DEFAULT,
+    UiFontLarge = IDS_UI_FONT_LARGE,
+    UiFontLarger = IDS_UI_FONT_LARGER,
     TrayIntentCopy = IDS_TRAY_INTENT_COPY,
     TrayIntentMove = IDS_TRAY_INTENT_MOVE,
     TrayReleaseCopy = IDS_TRAY_RELEASE_COPY,
@@ -1234,6 +1351,8 @@ enum class StringId : UINT {
 };
 
 bool IsLanguageId(std::wstring_view id) noexcept;
+// Maps a Windows UI LANGID to a shipped language: zh-TW/HK/MO -> ZhTW, other Chinese -> ZhCN.
+Language LanguageFromLangId(LANGID language) noexcept;
 Language LanguageFromId(std::wstring_view id) noexcept;
 const wchar_t* LanguageId(Language language) noexcept;
 void Initialize(HINSTANCE module, std::wstring_view preference);
@@ -1242,5 +1361,30 @@ Language preference() noexcept;
 Language effective_language() noexcept;
 const wchar_t* LocaleName() noexcept;
 const std::wstring& Get(StringId id);
+
+// Chinese UI text that lives in code rather than the string table is written in
+// Simplified Chinese. These helpers convert it for the zh-TW UI (zh_hant.cpp).
+bool IsChinese() noexcept;
+// Returns `chinese` for zh-CN, its Traditional form for zh-TW, otherwise `english`.
+const wchar_t* Pick(const wchar_t* chinese, const wchar_t* english) noexcept;
+// Converts one Simplified UI literal for zh-TW; unchanged for other languages.
+const wchar_t* Cn(const wchar_t* chinese) noexcept;
+// Converts composed Simplified UI text for zh-TW, phrase by phrase. Only for text
+// that does not embed user data such as paths or file names.
+std::wstring HantText(std::wstring_view chinese);
+// Unconditional Simplified -> Traditional conversion behind HantText, for caches
+// built independently of the current language (e.g. release notes).
+std::wstring ToTraditional(std::wstring_view chinese);
+
+// Text reported by helper processes (index service, network agent, pulse_shell,
+// preview host) in Simplified Chinese, localized for display: unchanged for
+// zh-CN, Traditional for zh-TW, translated for English (service_text.cpp).
+// Unknown text is returned as reported; embedded paths and counts are kept.
+std::wstring ServiceText(std::wstring_view text);
+// True when every Chinese segment of `text` has a translation (for tests).
+bool IsKnownServiceText(std::wstring_view text);
+// Operation errors ("message | item path"): localizes a known message only and
+// never converts the item part, so real file names stay as they are on disk.
+std::wstring ServiceErrorText(std::wstring_view text);
 
 } // namespace pulse::l10n

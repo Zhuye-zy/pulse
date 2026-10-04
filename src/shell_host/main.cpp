@@ -40,6 +40,7 @@ namespace {
 
 constexpr UINT WM_EXEC_REQUEST = WM_APP + 1;
 constexpr UINT WM_QUIT_HOST = WM_APP + 2;
+constexpr UINT WM_RECYCLE_CHECK = WM_APP + 3; // see MaybeRecycleHost
 // Context-menu session thread messages (defined below with the session code).
 constexpr UINT WM_CTX_INVOKE = WM_APP + 10;  // lParam = CtxInvokeMsg*
 constexpr UINT WM_CTX_CLOSE = WM_APP + 11;
@@ -67,6 +68,7 @@ struct HostState {
     HWND hwnd_msg = nullptr;
     std::atomic<uint32_t> cancel_id{0};
     std::atomic<bool> running{true};
+    std::atomic<int> requests_in_flight{0}; // posted WM_EXEC_REQUEST not finished yet
 } g;
 
 // Crash-only diagnostics (plan §11: crashes are a normal design case).
@@ -400,60 +402,56 @@ bool ReadRecycleOriginal(const std::wstring& i_path, std::wstring& original) {
     return false;
 }
 
-bool RestoreOneFromRecycle(const std::wstring& wanted_canon, std::wstring& error) {
-    const wchar_t drive = wanted_canon.size() >= 2 && wanted_canon[1] == L':'
-        ? wanted_canon[0] : L'\0';
-    if (!drive) {
-        error = L"无法确定回收站卷";
-        return false;
-    }
-
-    wchar_t bin[32];
-    swprintf_s(bin, L"%c:\\$Recycle.Bin", drive);
+bool RestoreOneFromRecycle(const std::wstring& payload, std::wstring& error) {
+    const std::wstring wanted = CanonPath(payload);
     const std::wstring sid = pulse::CurrentUserSidString();
-    if (sid.empty()) {
+    if (wanted.size() < 3 || wanted[1] != L':' || sid.empty()) {
         error = L"无法确定当前用户的回收站";
         return false;
     }
-    const std::wstring sidDir = std::wstring(bin) + L"\\" + sid;
-    WIN32_FIND_DATAW iFd{};
-    HANDLE iFind = FindFirstFileW((sidDir + L"\\$I*").c_str(), &iFd);
-    if (iFind == INVALID_HANDLE_VALUE) {
-        error = L"无法打开当前用户的回收站";
+    const std::wstring parent = wanted.substr(0, wanted.find_last_of(L'\\'));
+    const std::wstring expected = CanonPath(wanted.substr(0, 2) + L"\\$Recycle.Bin\\" + sid);
+    const std::wstring name = wanted.substr(wanted.find_last_of(L'\\') + 1);
+    if (parent != expected || name.size() <= 2 || name.substr(0, 2) != L"$R") {
+        // Legacy undo records contain only the original path. Never guess
+        // between multiple versions of that path.
+        WIN32_FIND_DATAW data{};
+        HANDLE find = FindFirstFileW((expected + L"\\$I*").c_str(), &data);
+        std::wstring match;
+        bool ambiguous = false;
+        if (find != INVALID_HANDLE_VALUE) {
+            do {
+                std::wstring original;
+                const std::wstring index = expected + L"\\" + data.cFileName;
+                if (!ReadRecycleOriginal(index, original) || CanonPath(original) != wanted) continue;
+                std::wstring candidate = index;
+                candidate[candidate.find_last_of(L'\\') + 2] = L'R';
+                if (GetFileAttributesW(candidate.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+                if (!match.empty()) { ambiguous = true; break; }
+                match = std::move(candidate);
+            } while (FindNextFileW(find, &data));
+            FindClose(find);
+        }
+        if (!match.empty() && !ambiguous) return RestoreOneFromRecycle(match, error);
+        error = L"无法唯一确定回收站版本，请在回收站中选择具体条目";
         return false;
     }
-    bool restored = false;
-    do {
-        if (iFd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-        std::wstring iPath = sidDir + L"\\" + iFd.cFileName;
-        std::wstring original;
-        if (!ReadRecycleOriginal(iPath, original)) continue;
-        if (CanonPath(original) != wanted_canon) continue;
-
-        std::wstring rName = iFd.cFileName;
-        if (rName.size() >= 2) rName[1] = (rName[1] == L'I') ? L'R' : L'r';
-        std::wstring rPath = sidDir + L"\\" + rName;
-        if (GetFileAttributesW(rPath.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
-
-        std::wstring dest = ToParsingPath(original);
-        if (GetFileAttributesW(dest.c_str()) != INVALID_FILE_ATTRIBUTES) {
-            error = L"还原目标已存在";
-            FindClose(iFind);
-            return false;
-        }
-        if (!MoveFileExW(rPath.c_str(), dest.c_str(), 0)) {
-            error = L"还原失败";
-            FindClose(iFind);
-            return false;
-        }
-        DeleteFileW(iPath.c_str());
-        restored = true;
-        break;
-    } while (FindNextFileW(iFind, &iFd));
-    FindClose(iFind);
-
-    if (!restored) error = L"回收站中未找到该项";
-    return restored;
+    std::wstring index = payload;
+    const size_t slash = index.find_last_of(L"\\/");
+    if (slash == std::wstring::npos || slash + 2 >= index.size()) return false;
+    index[slash + 2] = L'I';
+    std::wstring original;
+    if (!ReadRecycleOriginal(index, original)) {
+        error = L"无法读取所选回收站条目";
+        return false;
+    }
+    const std::wstring dest = ToParsingPath(original);
+    if (!MoveFileExW(payload.c_str(), dest.c_str(), 0)) {
+        error = L"还原失败（目标可能已存在）";
+        return false;
+    }
+    DeleteFileW(index.c_str());
+    return true;
 }
 
 HRESULT ExecuteRestore(const std::vector<std::wstring>& paths, std::wstring& error) {
@@ -461,7 +459,7 @@ HRESULT ExecuteRestore(const std::vector<std::wstring>& paths, std::wstring& err
     size_t ok = 0;
     for (const auto& src : paths) {
         std::wstring one_error;
-        if (RestoreOneFromRecycle(CanonPath(src), one_error)) {
+        if (RestoreOneFromRecycle(src, one_error)) {
             ++ok;
         } else if (error.empty()) {
             error = one_error;
@@ -588,6 +586,58 @@ bool ReadRaw(void* out, DWORD size) {
     return PipeRead(g.pipe, static_cast<uint8_t*>(out), size);
 }
 
+// Expected pipe peer, captured before the pipe is created. ui_pid is the pid
+// the UI passed as argv[1] and the one embedded in the pipe name, so a peer
+// reporting a different pid is not the process we were started by.
+struct ExpectedPeer {
+    DWORD pid = 0;
+    std::wstring executable;   // lower-case, empty when it could not be read
+};
+ExpectedPeer g_expected_peer;
+
+std::wstring LowerPath(std::wstring path) {
+    for (auto& c : path) c = static_cast<wchar_t>(std::towlower(c));
+    return path;
+}
+
+// Full path of a process image, or empty when it cannot be queried (a protected
+// or already-exiting process is not necessarily hostile, so callers must treat
+// "unknown" separately from "different").
+std::wstring ProcessImagePath(DWORD pid) {
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) return {};
+    wchar_t buffer[MAX_PATH * 2]{};
+    DWORD size = ARRAYSIZE(buffer);
+    const BOOL ok = QueryFullProcessImageNameW(process, 0, buffer, &size);
+    CloseHandle(process);
+    return ok && size ? std::wstring(buffer, size) : std::wstring();
+}
+
+// True when the connected pipe peer is the UI process that spawned this host.
+bool ClientIsExpected() {
+    ULONG pid = 0;
+    if (!GetNamedPipeClientProcessId(g.pipe, &pid)) {
+        HostLog(L"Rejected pipe peer: cannot read client pid");
+        return false;
+    }
+    if (pid != g_expected_peer.pid) {
+        wchar_t buf[160];
+        swprintf_s(buf, L"Rejected pipe peer: pid %lu, expected %lu", pid, g_expected_peer.pid);
+        HostLog(buf);
+        return false;
+    }
+    if (g_expected_peer.executable.empty()) return true;   // could not read our own path
+    const std::wstring peer = LowerPath(ProcessImagePath(pid));
+    if (peer.empty()) return true;   // peer already exiting; pid already matched
+    if (peer != g_expected_peer.executable) {
+        wchar_t buf[160];
+        swprintf_s(buf, L"Rejected pipe peer: image '%ls' is not the UI", peer.c_str());
+        HostLog(buf);
+        return false;
+    }
+    return true;
+}
+
 DWORD WINAPI ReaderThread(LPVOID) {
     __try {
         return ReaderThreadImpl();
@@ -617,6 +667,15 @@ DWORD WINAPI ReaderThreadImpl() {
         if (!connected) {
             if (!g.running.load()) break;
             Sleep(200);
+            continue;
+        }
+        // The pipe DACL only proves "same user", which on a shared machine is
+        // every process that user runs. The protocol can delete arbitrary paths
+        // (REQ_REALDELETE), so confirm the peer is the UI process that spawned
+        // us: the pid passed on the command line, running the same executable.
+        if (!ClientIsExpected()) {
+            HostLog(L"Rejected pipe peer: not the spawning UI process");
+            DisconnectNamedPipe(g.pipe);
             continue;
         }
         // Frame loop.
@@ -694,8 +753,10 @@ DWORD WINAPI ReaderThreadImpl() {
                     delete req;
                     break;
                 }
+                g.requests_in_flight.fetch_add(1);
                 if (!PostMessageW(g.hwnd_msg, WM_EXEC_REQUEST, 0,
                                   reinterpret_cast<LPARAM>(req))) {
+                    g.requests_in_flight.fetch_sub(1);
                     SendDone(req->id, HRESULT_FROM_WIN32(GetLastError()), false,
                              L"host message queue unavailable");
                     delete req;
@@ -737,6 +798,25 @@ struct CtxSlot {
 
 std::mutex g_ctx_mutex;
 std::map<uint32_t, CtxSlot> g_ctx_sessions;
+// Guarded by g_ctx_mutex (#65): session threads still running (a session
+// leaves g_ctx_sessions before it joins its handler threads), and handler
+// threads given up on because QueryContextMenu never returned.
+int g_ctx_threads = 0;
+std::vector<HANDLE> g_abandoned_threads;
+
+// Test hook (#65): PULSE_SHELL_TEST_STUCK_HANDLER=<file name> adds, to menus
+// for that file only, a handler whose QueryContextMenu never returns, like a
+// third-party extension that hangs.
+constexpr wchar_t kTestStuckHandler[] = L"{50554C53-4500-4D41-4E47-000000000065}";
+
+bool TestStuckHandlerFor(const std::wstring& path) {
+    wchar_t name[MAX_PATH]{};
+    const DWORD length = GetEnvironmentVariableW(L"PULSE_SHELL_TEST_STUCK_HANDLER", name,
+                                                 ARRAYSIZE(name));
+    if (length == 0 || length >= ARRAYSIZE(name) || path.size() <= length) return false;
+    return path[path.size() - length - 1] == L'\\' &&
+           _wcsicmp(path.c_str() + path.size() - length, name) == 0;
+}
 
 using pulse::shell::CtxItemOut;
 
@@ -914,6 +994,7 @@ DWORD HandlerWorkerThreadImpl(LPVOID param) {
     w->thread_id = GetCurrentThreadId();
 
     const ULONGLONG t0 = GetTickCount64();
+    if (w->desc.clsid_text == kTestStuckHandler) Sleep(INFINITE);
     pulse::shell::CtxBind bind;
     if (pulse::shell::BindCtxSelection(w->paths, w->background, bind)) {
         const HRESULT hr = pulse::shell::QueryOneHandler(
@@ -971,9 +1052,35 @@ DWORD WINAPI HandlerWorkerThread(LPVOID param) {
     }
 }
 
+// A handler still inside QueryContextMenu gets this long after the session
+// ends. A thread cannot be stopped safely, so then it is given up on: its
+// worker leaks with it, and the host recycles itself once idle (#65).
+constexpr DWORD kHandlerJoinMs = 2000;
+
 void JoinHandlerWorkers(std::vector<std::unique_ptr<HandlerWorker>>& workers) {
     for (auto& w : workers)
         if (w && w->exit_event) SetEvent(w->exit_event);
+    // Handlers that never answered first. One that did may be running a
+    // command the user picked (a dialog, say): that one is waited for.
+    const ULONGLONG deadline = GetTickCount64() + kHandlerJoinMs;
+    std::vector<HANDLE> abandoned;
+    for (auto& w : workers) {
+        if (!w || !w->thread || !w->done_event ||
+            WaitForSingleObject(w->done_event, 0) == WAIT_OBJECT_0) continue;
+        const ULONGLONG now = GetTickCount64();
+        const DWORD wait = now >= deadline ? 0 : static_cast<DWORD>(deadline - now);
+        if (WaitForSingleObject(w->thread, wait) == WAIT_OBJECT_0) continue;
+        wchar_t line[256];
+        swprintf_s(line, L"context menu handler never returned: %ls",
+                   w->desc.clsid_text.c_str());
+        HostLog(line);
+        abandoned.push_back(w->thread);
+        (void)w.release(); // the thread still uses it, events included
+    }
+    if (!abandoned.empty()) {
+        std::lock_guard<std::mutex> lock(g_ctx_mutex);
+        g_abandoned_threads.insert(g_abandoned_threads.end(), abandoned.begin(), abandoned.end());
+    }
     for (auto& w : workers)
         if (w && w->thread) WaitForSingleObject(w->thread, INFINITE);
     for (auto& w : workers) {
@@ -1015,6 +1122,9 @@ DWORD WINAPI CtxSessionThreadImpl(LPVOID param) {
 
     constexpr UINT kIdsPerHandler = 256;
     constexpr DWORD kFastBudgetMs = 80;
+    // Handlers still busy by then are not responding: the menu settles
+    // without them and they are reported as timed out (#65).
+    constexpr DWORD kHandlerStuckMs = 5000;
     const ULONGLONG started = GetTickCount64();
     UINT qcm_flags = QueryContextMenuFlags(*data);
 
@@ -1037,6 +1147,13 @@ DWORD WINAPI CtxSessionThreadImpl(LPVOID param) {
 
     auto handlers = pulse::shell::EnumerateCtxHandlers(
         data->background, data->paths.front(), data->disabled_clsids);
+    if (TestStuckHandlerFor(data->paths.front()) &&
+        std::find(data->disabled_clsids.begin(), data->disabled_clsids.end(),
+                  kTestStuckHandler) == data->disabled_clsids.end()) {
+        pulse::shell::CtxHandlerDesc stuck;
+        stuck.clsid_text = kTestStuckHandler;
+        handlers.insert(handlers.begin(), std::move(stuck));
+    }
     if (handlers.size() > MAXIMUM_WAIT_OBJECTS)
         handlers.resize(MAXIMUM_WAIT_OBJECTS);
 
@@ -1094,9 +1211,12 @@ DWORD WINAPI CtxSessionThreadImpl(LPVOID param) {
     };
     auto collect_slow = [&] {
         std::vector<std::wstring> slow;
+        const bool late = GetTickCount64() - started >= 1000;
         for (const auto& w : workers) {
-            if (!w || !worker_done(*w) || w->elapsed_ms < 1000) continue;
-            if (!w->desc.clsid_text.empty()) slow.push_back(w->desc.clsid_text);
+            if (!w) continue;
+            // Still inside QueryContextMenu: not responding (#65).
+            const bool slow_one = worker_done(*w) ? w->elapsed_ms >= 1000 : late;
+            if (slow_one && !w->desc.clsid_text.empty()) slow.push_back(w->desc.clsid_text);
         }
         return slow;
     };
@@ -1107,6 +1227,7 @@ DWORD WINAPI CtxSessionThreadImpl(LPVOID param) {
             pump_session_messages();
             if (SessionCloseRequested(sid)) break;
             const ULONGLONG elapsed = GetTickCount64() - started;
+            if (elapsed >= kHandlerStuckMs) break;
             if (!sent_partial && elapsed >= kFastBudgetMs) {
                 items = collect_items();
                 SendCtxItems(sid, items, CTX_ITEMS_PARTIAL);
@@ -1217,6 +1338,16 @@ DWORD WINAPI CtxSessionThreadImpl(LPVOID param) {
     return 0;
 }
 
+void CtxSessionThreadEnded() {
+    bool recheck = false;
+    {
+        std::lock_guard<std::mutex> lock(g_ctx_mutex);
+        --g_ctx_threads;
+        recheck = !g_abandoned_threads.empty();
+    }
+    if (recheck) PostMessageW(g.hwnd_msg, WM_RECYCLE_CHECK, 0, 0);
+}
+
 int CtxCrashFilter(EXCEPTION_POINTERS* ep) {
     wchar_t mod[MAX_PATH]{};
     HMODULE hm = nullptr;
@@ -1244,12 +1375,14 @@ DWORD WINAPI CtxSessionThread(LPVOID param) {
     // Grab the session id up front: on a crash we still answer the query with
     // an empty item list so the UI process is not left waiting for RSP_CTX_ITEMS.
     const uint32_t sid = static_cast<CtxSessionData*>(param)->session_id;
+    DWORD result = 0;
     __try {
-        return CtxSessionThreadImpl(param);
+        result = CtxSessionThreadImpl(param);
     } __except (CtxCrashFilter(GetExceptionInformation())) {
         CtxCrashCleanup(sid);
-        return 0;
     }
+    CtxSessionThreadEnded();
+    return result;
 }
 
 void StartCtxSession(uint32_t session_id, const uint8_t* payload, size_t size) {
@@ -1269,10 +1402,12 @@ void StartCtxSession(uint32_t session_id, const uint8_t* payload, size_t size) {
     {
         std::lock_guard<std::mutex> lock(g_ctx_mutex);
         g_ctx_sessions[session_id] = CtxSlot{};
+        ++g_ctx_threads;
     }
     HANDLE thread = CreateThread(nullptr, 0, CtxSessionThread, data.get(), 0, nullptr);
     if (!thread) {
         std::lock_guard<std::mutex> lock(g_ctx_mutex);
+        --g_ctx_threads;
         g_ctx_sessions.erase(session_id);
         SendCtxItems(session_id, {});
         return;
@@ -1348,9 +1483,38 @@ DWORD WINAPI PackagedVerbsPrewarm(LPVOID) {
     return 0;
 }
 
+// A handler thread that never returned cannot be stopped (#65). Once nothing
+// else runs in the host, end the process: that reclaims those threads, and
+// Pulse starts a fresh host on its next request.
+void MaybeRecycleHost() {
+    if (g.requests_in_flight.load() != 0) return;
+    std::lock_guard<std::mutex> lock(g_ctx_mutex); // keeps new sessions out
+    auto& stuck = g_abandoned_threads;
+    stuck.erase(std::remove_if(stuck.begin(), stuck.end(), [](HANDLE thread) {
+        if (WaitForSingleObject(thread, 0) != WAIT_OBJECT_0) return false;
+        CloseHandle(thread); // it returned after all
+        return true;
+    }), stuck.end());
+    if (stuck.empty() || g_ctx_threads != 0 || !g_ctx_sessions.empty() ||
+        g.requests_in_flight.load() != 0) return;
+    wchar_t line[128];
+    swprintf_s(line, L"Recycling host: %zu context menu handler thread(s) never returned",
+               stuck.size());
+    HostLog(line);
+    // Not ExitProcess: DLL detach would run beside threads that may hold the
+    // loader lock or a heap lock.
+    TerminateProcess(GetCurrentProcess(), 0);
+}
+
 LRESULT CALLBACK HostWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_EXEC_REQUEST) {
         ExecuteRequest(reinterpret_cast<Request*>(lParam));
+        g.requests_in_flight.fetch_sub(1);
+        MaybeRecycleHost();
+        return 0;
+    }
+    if (msg == WM_RECYCLE_CHECK) {
+        MaybeRecycleHost();
         return 0;
     }
     if (msg == WM_QUIT_HOST) {
@@ -1375,6 +1539,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
         ui_pid = (DWORD)_wtoi(__wargv[1]);
         if (ui_pid == 0) ui_pid = GetCurrentProcessId();
     }
+    // Record who is allowed to drive this host. Querying the image of the
+    // process that passed the pid also covers standalone runs, where that
+    // process is whatever launched us (a test harness, for example).
+    g_expected_peer.pid = ui_pid;
+    g_expected_peer.executable = LowerPath(ProcessImagePath(ui_pid));
 
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     if (FAILED(hr)) return 1;

@@ -2,6 +2,7 @@
 
 #include "../common/localization.h"
 #include "../common/windows_compat.h"
+#include "typography.h"
 
 #include <dwmapi.h>
 #include <imm.h>
@@ -432,7 +433,8 @@ void TextDiffWindow::RecreateFormats() {
     auto make = [&](const wchar_t* family, DWRITE_FONT_WEIGHT weight, float dip,
                     DWRITE_TEXT_ALIGNMENT align, ComPtr<IDWriteTextFormat>& out) {
         if (FAILED(factory->CreateTextFormat(family, nullptr, weight, DWRITE_FONT_STYLE_NORMAL,
-                                             DWRITE_FONT_STRETCH_NORMAL, dip * scale_, locale,
+                                             DWRITE_FONT_STRETCH_NORMAL,
+                                             dip * scale_ * typography::UiFontScale(), locale,
                                              &out)) || !out.get())
             return;
         out->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);

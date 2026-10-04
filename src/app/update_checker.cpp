@@ -1,5 +1,6 @@
 #include "update_checker.h"
 #include "update_transport.h"
+#include "../common/runtime_log.h"
 #include <thread>
 
 #include "pulse_update_config.h"
@@ -282,7 +283,7 @@ uint32_t CurrentWindowsBuild() {
     return version.dwBuildNumber;
 }
 
-UpdateResult CheckConfiguredManifest(const std::atomic<bool>& cancelled) {
+UpdateResult CheckConfiguredManifest(const std::atomic<bool>& cancelled, uint64_t operation_id) {
     UpdateResult result;
 #if PULSE_UPDATE_ENABLED
     std::string document;
@@ -296,11 +297,16 @@ UpdateResult CheckConfiguredManifest(const std::atomic<bool>& cancelled) {
         result.diagnostic_code = error;
         return result;
     }
-    return ValidateUpdateManifest(document, PULSE_UPDATE_PUBLIC_KEY_HEX,
+    diagnostics::runtime::Event("update_manifest_received", {{"operation", operation_id}, {"bytes", document.size()}});
+    auto validated = ValidateUpdateManifest(document, PULSE_UPDATE_PUBLIC_KEY_HEX,
                                   PULSE_VERSION_STRING_A,
                                   CurrentWindowsBuild());
+    diagnostics::runtime::Event("update_manifest_validated", {{"operation", operation_id},
+        {"error", static_cast<uint64_t>(validated.error)}});
+    return validated;
 #else
     (void)cancelled;
+    (void)operation_id;
     result.error = UpdateError::Disabled;
     return result;
 #endif
@@ -362,6 +368,7 @@ UpdateResult ValidateUpdateManifest(std::string_view document,
 }
 
 struct UpdateChecker::State {
+    const uint64_t operation_id = diagnostics::runtime::NextId();
     std::atomic<bool> cancelled{false};
     std::atomic<bool> checking{true};
     std::mutex mutex;
@@ -379,11 +386,17 @@ bool UpdateChecker::CheckAsync(HWND notify, UINT message) {
     Stop();
     auto state = std::make_shared<State>();
     state_ = state;
+    diagnostics::runtime::Event("update_check_start", {{"operation", state->operation_id}});
     try {
         std::thread([state, notify, message] {
+            const auto started = GetTickCount64();
             UpdateResult result;
-            try { result = CheckConfiguredManifest(state->cancelled); }
+            try { result = CheckConfiguredManifest(state->cancelled, state->operation_id); }
             catch (...) { result.error = UpdateError::Network; }
+            diagnostics::runtime::Event("update_check_end", {{"operation", state->operation_id},
+                {"error", static_cast<uint64_t>(result.error)}, {"code", result.diagnostic_code},
+                {"cancelled", state->cancelled.load()}, {"available", result.update_available},
+                {"elapsed_ms", GetTickCount64() - started}});
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
                 state->result = std::move(result);
@@ -393,6 +406,7 @@ bool UpdateChecker::CheckAsync(HWND notify, UINT message) {
             if (!state->cancelled) PostMessageW(notify, message, 0, 0);
         }).detach();
     } catch (...) {
+        diagnostics::runtime::Event("update_check_thread_failed", {{"operation", state->operation_id}});
         state->checking = false;
         return false;
     }
@@ -409,7 +423,10 @@ bool UpdateChecker::TakeResult(UpdateResult& result) {
 }
 
 void UpdateChecker::Stop() {
-    if (state_) state_->cancelled = true;
+    if (state_) {
+        if (state_->checking) diagnostics::runtime::Event("update_check_cancel", {{"operation", state_->operation_id}});
+        state_->cancelled = true;
+    }
     state_.reset();
 }
 

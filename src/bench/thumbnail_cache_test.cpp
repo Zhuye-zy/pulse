@@ -3,6 +3,43 @@
 
 namespace pulse::ui {
 struct ThumbnailCacheTestAccess {
+    static bool PropertiesRegression() {
+        ThumbnailCache cache;
+        // Inspect queued requests deterministically without launching a worker.
+        cache.running_ = true;
+        bool ok = true;
+        auto check = [&](bool result, const char* name) {
+            std::printf("[%s] %s\n", result ? "PASS" : "FAIL", name);
+            ok &= result;
+        };
+        std::vector<PreviewProperty> properties;
+        cache.Properties(L"preview-a.docx", 0, 1, 2, 3, properties);
+        check(cache.queue_.size() == 1, "properties queue without any cover drawing");
+        const auto old = cache.queue_.front();
+        cache.Properties(L"preview-b.mp3", 0, 2, 3, 4, properties);
+        check(cache.queue_.size() == 1 && cache.queue_.front().path == L"preview-b.mp3",
+              "selection switch cancels old queued properties");
+        check(!cache.StoreResult(old, {}), "late properties cannot replace new selection");
+        const auto req = cache.queue_.front();
+        cache.queue_.clear();
+        ThumbnailCache::Item failed;
+        failed.failed = failed.transient = true;
+        cache.StoreResult(req, std::move(failed));
+        cache.Properties(req.path, 0, 2, 3, 4, properties);
+        check(cache.queue_.empty(), "transient failure waits for retry deadline");
+        cache.items_.at(req.key).retry_at = 0;
+        cache.Properties(req.path, 0, 2, 3, 4, properties);
+        cache.Properties(req.path, 0, 2, 3, 4, properties);
+        check(cache.queue_.size() == 1, "expired properties failure retries once");
+        ThumbnailCache::Item good;
+        good.properties.push_back({L"Title", L"correct selection"});
+        cache.queue_.clear();
+        cache.StoreResult(req, std::move(good));
+        check(cache.Properties(req.path, 0, 2, 3, 4, properties) && properties.size() == 1,
+              "successful retry returns current properties");
+        cache.running_ = false;
+        return ok;
+    }
     static bool Run() {
         ThumbnailCache cache;
         bool ok = true;
@@ -215,4 +252,8 @@ struct ThumbnailCacheTestAccess {
 
 bool RunThumbnailCacheTests() {
     return pulse::ui::ThumbnailCacheTestAccess::Run();
+}
+
+bool RunThumbnailPropertiesRegression() {
+    return pulse::ui::ThumbnailCacheTestAccess::PropertiesRegression();
 }

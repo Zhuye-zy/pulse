@@ -1,4 +1,5 @@
 #include "../index/index_engine.h"
+#include "../index/index_hierarchy.h"
 #include "../index/usn_stream.h"
 #include <cstring>
 #include "../index/index_shard.h"
@@ -20,6 +21,112 @@ struct UsnStreamTestAccess {
 };
 
 struct EngineTestAccess {
+    static bool ValidateCache(const std::wstring& path) {
+        Engine engine;
+        std::unique_ptr<Engine::MappedFile> mapped;
+        const bool valid = engine.MapIndexFile(path, mapped);
+        std::cout << "cache_valid=" << valid << "\n";
+        return valid;
+    }
+    static bool RecoverCache(const std::wstring& source, const std::wstring& destination) {
+        if (std::filesystem::exists(destination) || ValidateCache(source)) return false;
+        std::filesystem::create_directories(destination);
+        SetActiveIndexDirectory(destination);
+        SetMachineIndexScope(true);
+        Engine engine;
+        engine.running_ = true;
+        engine.ResolveIndexDirFrn();
+        const auto started = std::chrono::steady_clock::now();
+        engine.FullRebuild("hierarchy_recovery_fixture");
+        const int32_t count = engine.LiveCount();
+        const bool valid = engine.ready_ && count > 0 && engine.map_ &&
+            ValidateIndexHierarchy(count, [&](int32_t i) { return engine.NodeAt(i); });
+        FolderSizeIndex sizes;
+        const bool totals = valid && sizes.Build(count, [&](int32_t i) { return engine.FolderSizeItem(i); });
+        std::cout << "recovered_nodes=" << count << " hierarchy_valid=" << valid
+            << " folder_totals_valid=" << totals << " elapsed_ms="
+            << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count() << "\n";
+        engine.Stop();
+        return valid && totals;
+    }
+    static bool ReopenCache(const std::wstring& directory) {
+        if (!std::filesystem::is_directory(directory)) return false;
+        SetActiveIndexDirectory(directory);
+        SetMachineIndexScope(true);
+        Engine engine;
+        const auto started = std::chrono::steady_clock::now();
+        const bool loaded = engine.TryLoadCache();
+        FolderSizeIndex sizes;
+        const bool totals = loaded && sizes.Build(engine.LiveCount(),
+            [&](int32_t i) { return engine.FolderSizeItem(i); });
+        std::cout << "cache_loaded=" << loaded << " nodes=" << engine.LiveCount()
+            << " folder_totals_valid=" << totals << " elapsed_ms="
+            << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count() << "\n";
+        engine.Stop();
+        return loaded && totals;
+    }
+    static bool HierarchyFixture() {
+        bool ok = true;
+        auto check = [&](bool value, const char* label) {
+            std::cout << (value ? "[PASS] " : "[FAIL] ") << label << '\n'; ok &= value;
+        };
+        std::vector<Node> nodes(3);
+        nodes[0].parent = 2; nodes[1].parent = -1; nodes[1].flags = 1;
+        nodes[2].parent = 1; nodes[2].flags = 1;
+        auto valid = [&] { return ValidateIndexHierarchy(static_cast<int32_t>(nodes.size()), [&](int32_t i) { return nodes[i]; }); };
+        check(valid(), "hierarchy permits children preceding parents");
+        nodes[2].flags = 0; check(!valid(), "file cannot be a parent"); nodes[2].flags = 1;
+        nodes[1].parent = 2; check(!valid(), "directory cycle is rejected"); nodes[1].parent = -1;
+        nodes[0].parent = 3; check(!valid(), "out-of-range parent is rejected");
+        nodes[0].parent = -2; check(!valid(), "invalid negative parent is rejected");
+        nodes[0].parent = -1; check(!valid(), "orphan file root is rejected");
+        nodes[0].parent = 2; nodes[2].flags = 5; check(!valid(), "alive child cannot have deleted parent");
+        nodes[2].flags = 1; check(valid(), "repaired hierarchy is accepted");
+        Engine engine; check(Build(engine), "build valid mapped hierarchy fixture");
+        const auto file = std::filesystem::temp_directory_path() / (L"pulse-hierarchy-" + std::to_wstring(GetCurrentProcessId()) + L".bin");
+        check(Save(engine, file.wstring()), "save valid hierarchy");
+        check(ValidateCache(file.wstring()), "production loader accepts valid hierarchy");
+        {
+            std::fstream stream(file, std::ios::binary | std::ios::in | std::ios::out);
+            DiskHeader header{}; stream.read(reinterpret_cast<char*>(&header), sizeof(header));
+            stream.seekp(static_cast<std::streamoff>(header.nodes_off + offsetof(Node, flags)));
+            const char file_flags = 0; stream.write(&file_flags, 1);
+        }
+        check(!ValidateCache(file.wstring()), "production loader rejects file root in otherwise readable cache");
+        std::filesystem::remove(file);
+        return ok;
+    }
+    static bool VisibilityCacheFixture() {
+        bool ok = true;
+        auto check = [&](bool value, const char* name) {
+            std::cout << (value ? "[PASS] " : "[FAIL] ") << name << '\n'; ok &= value;
+        };
+        Engine engine;
+        check(Build(engine), "build isolated visibility fixture");
+        VolumeInfo active; active.id = engine.vols_.front().volume_id;
+        Query query; query.needle = L"settings.toml";
+        check(engine.Search(query).total == 1, "visible volume returns matching file");
+        const auto initial_epoch = engine.cache_epoch_;
+        for (int i = 0; i < 1000; ++i) engine.UpdateVolumeVisibilityLocked({active});
+        check(engine.filter_epoch_ == initial_epoch,
+            "unchanged volume polling preserves cached query across 1000 wakes");
+        engine.UpdateVolumeVisibilityLocked({});
+        check(engine.filter_epoch_ != initial_epoch && engine.Search(query).total == 0,
+            "offline transition invalidates cache and hides matching file");
+        const auto offline_epoch = engine.cache_epoch_;
+        engine.UpdateVolumeVisibilityLocked({});
+        engine.UpdateVolumeVisibilityLocked({}, true);
+        engine.UpdateVolumeVisibilityLocked({active}, true);
+        check(engine.filter_epoch_ == offline_epoch && engine.Search(query).total == 0,
+            "unchanged and hide-only polling preserve offline cache");
+        engine.UpdateVolumeVisibilityLocked({active});
+        check(engine.filter_epoch_ != offline_epoch && engine.Search(query).total == 1,
+            "online transition invalidates cache and restores matching file");
+        engine.UpdateVolumeVisibilityLocked({}, true);
+        check(engine.Search(query).total == 0, "hide-only transition invalidates visible cache");
+        return ok;
+    }
+
     static bool FolderSizesFixture() {
         bool ok = true;
         auto check = [&](bool value, const char* name) {
@@ -89,6 +196,24 @@ struct EngineTestAccess {
         check(!size(L"\\\\server\\share").available && !size(fixture / L"absent").available, "uncovered UNC and missing paths never return false zero");
         e.excluded_paths_.push_back(b.wstring()); check(!size(b).available, "excluded root falls back to filesystem statistics");
         check(!size(L"\\\\?\\" + b.wstring()).available, "extended-length client path cannot bypass index exclusion");
+        e.excluded_paths_.clear();
+        const int32_t broken_id = e.ResolvePathLocked(b.wstring());
+        const auto old_parent = e.live_.nodes[broken_id].parent;
+        e.live_.nodes[broken_id].parent = broken_id;
+        e.InvalidateFilterLocked();
+        check(!size(fixture).available, "malformed metadata declines folder totals");
+        const auto failed_builds = e.folder_sizes_.Builds();
+        bool all_unknown = true;
+        for (int i = 0; i < 100; ++i) all_unknown &= !size(fixture).available;
+        check(all_unknown && e.folder_sizes_.Builds() == failed_builds,
+            "100 client polls after failed aggregation do not repeat whole-index scans");
+        e.folder_size_retry_after_ = GetTickCount64() - 1;
+        check(!size(fixture).available && e.folder_sizes_.Builds() == failed_builds + 1,
+            "expired failure delay permits one new aggregation attempt");
+        e.live_.nodes[broken_id].parent = old_parent;
+        e.InvalidateFilterLocked();
+        check(size(fixture).available && size(fixture).bytes == 75,
+            "replacement snapshot clears failure delay and restores correct totals");
         std::error_code ec; std::filesystem::remove_all(fixture, ec); check(!ec, "isolated folder-index fixture cleanup");
 
         FolderSizeIndex index;
@@ -345,6 +470,11 @@ struct EngineTestAccess {
             check(attempts == 3, "failed volume becomes eligible after sixty seconds");
             engine.RecoverFailedVolumes({failed}, epoch + 121000, [](const VolumeInfo&) { return true; });
             check(engine.volume_retry_after_.empty(), "successful recovery clears its retry state");
+            unsigned successful_attempts = 0;
+            engine.RecoverFailedVolumes({failed}, epoch + 122000, [&](const VolumeInfo&) { ++successful_attempts; return true; });
+            check(successful_attempts == 0, "successful recovery suppresses repeated overflow during cooldown");
+            engine.RecoverFailedVolumes({failed}, epoch + 181000, [&](const VolumeInfo&) { ++successful_attempts; return true; });
+            check(successful_attempts == 1, "persistent overflow becomes eligible after successful recovery cooldown");
         }
         {
             Engine engine;
@@ -709,9 +839,20 @@ void CheckSearch(Engine& e) {
 #include "index_quiet_diagnostics_fixture.h"
 
 int wmain(int argc, wchar_t** argv) {
+    if (argc == 3 && std::wstring_view(argv[1]) == L"--validate-cache") return EngineTestAccess::ValidateCache(argv[2]) ? 0 : 1;
+    if (argc == 4 && std::wstring_view(argv[1]) == L"--diagnostic-cache") {
+        if (!pulse::diagnostics::runtime::Initialize(argv[3], "test")) return 2;
+        const bool valid = EngineTestAccess::ValidateCache(argv[2]);
+        pulse::diagnostics::runtime::Shutdown();
+        return valid ? 0 : 1;
+    }
+    if (argc == 4 && std::wstring_view(argv[1]) == L"--recover-cache") return EngineTestAccess::RecoverCache(argv[2], argv[3]) ? 0 : 1;
+    if (argc == 3 && std::wstring_view(argv[1]) == L"--reopen-cache") return EngineTestAccess::ReopenCache(argv[2]) ? 0 : 1;
+    if (argc == 2 && std::wstring_view(argv[1]) == L"--hierarchy-only") return EngineTestAccess::HierarchyFixture() ? 0 : 1;
     const bool quiet = argc > 1 && std::wstring_view(argv[1]) == L"--quiet-maintenance-only";
     if (!SetEnvironmentVariableW(L"PULSE_INDEX_DIAGNOSTICS", quiet ? nullptr : L"1")) return 2;
     if (quiet) return EngineTestAccess::QuietDiagnosticsFixture() ? 0 : 1;
+    if (argc > 1 && std::wstring_view(argv[1]) == L"--visibility-cache-only") return EngineTestAccess::VisibilityCacheFixture() ? 0 : 1;
     if (argc > 1 && std::wstring_view(argv[1]) == L"--name-pool-only") return EngineTestAccess::NamePoolFixture() ? 0 : 1;
     if (argc > 1 && std::wstring_view(argv[1]) == L"--folder-sizes-only") return EngineTestAccess::FolderSizesFixture() ? 0 : 1;
     if (argc > 1 && std::wstring_view(argv[1]) == L"--usn-only") return EngineTestAccess::UsnQueueFixture() ? 0 : 1;

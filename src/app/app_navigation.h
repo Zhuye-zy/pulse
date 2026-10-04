@@ -26,7 +26,11 @@ void ApplyContentSearchUpdate(AppState& s, index::ContentSearchUpdate update);
 void DeliverIndexSearchResult(AppState& s, uint32_t id,
                                      index::SearchResult&& result);
 void AcceptIndexProviderResult(AppState& s, uint32_t id,
-                                      index::SearchResult&& result, bool network);
+                                      index::SearchResult&& result, bool network,
+                                      bool network_final = true);
+void AcceptLiveNetworkProgress(AppState& s, const std::shared_ptr<LiveNetworkSearch>& live);
+void DropLiveNetworkSearch(AppState& s);
+void AddLiveNetworkRoot(AppState& s, app::Tab& tab);
 void MaybePrefetchSearchPage(AppState& s);
 void CancelActiveContentSearch(AppState& s, app::Tab& tab);
 enum class PathLoadReason { Navigate, RestoreSession, History };

@@ -20,4 +20,18 @@ AddressBarCommand ParseAddressBarCommand(std::wstring_view text);
 // Executable to launch for a recognized program (nullptr for None).
 const wchar_t* AddressBarProgramExe(AddressBarProgram program);
 
+// Folder shortcuts typed in the address bar (#54): %VAR% environment variables
+// (%temp%, %appdata%\Microsoft) and shell: folders (shell:startup,
+// shell:sendto\sub, shell:::{CLSID}). shell:MyComputerFolder resolves to This PC
+// (an empty path) and shell:RecycleBinFolder to the pulse:recycle view.
+struct AddressShortcut {
+    bool resolved = false;   // false: not a shortcut, or one that names nothing
+    std::wstring path;       // filesystem path, L"" for This PC, or a pulse: view
+};
+
+// Surrounding spaces and quotes are ignored. Plain paths, unknown variables
+// and shell: names without a filesystem folder come back unresolved, so they
+// keep the address bar's ordinary handling. shell: lookups need COM.
+AddressShortcut ResolveAddressShortcut(std::wstring_view text);
+
 } // namespace pulse::app

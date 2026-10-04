@@ -7,6 +7,7 @@
 #include "../fs/fs_enum.h"
 #include "../fs/fs_recycle.h"
 #include "../fs/fs_net_cache.h"
+#include "../common/runtime_log.h"
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -61,7 +62,8 @@ void WorkerPool::Stop() {
 }
 
 uint64_t WorkerPool::Refresh(const std::wstring& path, ui::SortColumn col,
-                             ui::SortDirection dir, int group_by) {
+                             ui::SortDirection dir, int group_by,
+                             std::shared_ptr<const FolderSizeLookup> folder_sizes) {
     std::lock_guard<std::mutex> lock(mutex_);
     uint64_t gen = ++global_gen_;
     const std::wstring key = WorkKey(path, col, dir, group_by);
@@ -71,12 +73,15 @@ uint64_t WorkerPool::Refresh(const std::wstring& path, ui::SortColumn col,
     std::queue<WorkItem> filtered;
     while (!queue_.empty()) {
         if (queue_.front().request_key != key) filtered.push(std::move(queue_.front()));
+        else diagnostics::runtime::Event("navigation_superseded", {{"generation", queue_.front().generation}});
         queue_.pop();
     }
     queue_ = std::move(filtered);
     WorkItem work{ path, key, gen, col, dir };
     work.group_by = group_by;
+    work.folder_sizes = std::move(folder_sizes);
     queue_.push(std::move(work));
+    diagnostics::runtime::Event("navigation_request", {{"generation", gen}, {"load_paths", 0}});
     cv_.notify_one();
     return gen;
 }
@@ -94,6 +99,7 @@ uint64_t WorkerPool::LoadPaths(const std::wstring& view_path,
     std::queue<WorkItem> filtered;
     while (!queue_.empty()) {
         if (queue_.front().request_key != key) filtered.push(std::move(queue_.front()));
+        else diagnostics::runtime::Event("navigation_superseded", {{"generation", queue_.front().generation}});
         queue_.pop();
     }
     queue_ = std::move(filtered);
@@ -104,6 +110,7 @@ uint64_t WorkerPool::LoadPaths(const std::wstring& view_path,
     item.paths = std::move(paths);
     item.display_times = std::move(display_times);
     queue_.push(std::move(item));
+    diagnostics::runtime::Event("navigation_request", {{"generation", gen}, {"load_paths", 1}});
     cv_.notify_one();
     return gen;
 }
@@ -112,7 +119,15 @@ void WorkerPool::EnqueueIo(std::function<void()> task) {
     if (!task) return;
     std::lock_guard<std::mutex> lock(mutex_);
     if (!running_ || stopped_) return;
-    io_queue_.push(std::move(task));
+    io_queue_.Push(std::move(task), false);
+    cv_.notify_one();
+}
+
+void WorkerPool::EnqueueSerialIo(std::function<void()> task) {
+    if (!task) return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!running_ || stopped_) return;
+    io_queue_.Push(std::move(task), true);
     cv_.notify_one();
 }
 
@@ -154,6 +169,7 @@ WorkResult WorkerPool::Process(const WorkItem& item) {
                 entry.attrs = data.dwFileAttributes;
                 entry.is_dir = (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
                 entry.is_reparse = (data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+                entry.reparse_tag = entry.is_reparse ? fs::ReadReparseTag(leaf) : 0;
                 entry.cloud_recall =
                     (data.dwFileAttributes & FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS) != 0;
                 entry.size = (static_cast<uint64_t>(data.nFileSizeHigh) << 32) |
@@ -198,7 +214,7 @@ WorkResult WorkerPool::Process(const WorkItem& item) {
         }
     }
 
-    // Resolve .lnk targets (Recent folder, desktop shortcuts) before display.
+    // Read link destinations on this worker before display (including .lnk targets).
     if (!fs::IsRecycleViewPath(item.path)) {
         ResolveLinksInPlace(item.path, *entries, [&] {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -214,17 +230,24 @@ WorkResult WorkerPool::Process(const WorkItem& item) {
     struct SortCancelled {};
     if (!item.preserve_order) {
         const ScopedEntryGrouping grouping(item.group_by, item.path);
+        const auto tick = [&] {
+            if ((++comparisons & 8191u) == 0) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                const auto it = current_gen_.find(item.request_key);
+                if (!running_ || it == current_gen_.end() || it->second != item.generation)
+                    throw SortCancelled{};
+            }
+        };
         try {
-            std::sort(entries->begin(), entries->end(),
-                [&](const fs::DirEntry& a, const fs::DirEntry& b) {
-                    if ((++comparisons & 8191u) == 0) {
-                        std::lock_guard<std::mutex> lock(mutex_);
-                        const auto it = current_gen_.find(item.request_key);
-                        if (!running_ || it == current_gen_.end() || it->second != item.generation)
-                            throw SortCancelled{};
-                    }
-                    return EntryLess(a, b, item.sort_column, item.sort_direction);
-                });
+            if (item.folder_sizes && item.sort_column == ui::SortColumn::Size) {
+                SortEntriesBySize(*entries, item.sort_direction, *item.folder_sizes, tick);
+            } else {
+                std::sort(entries->begin(), entries->end(),
+                    [&](const fs::DirEntry& a, const fs::DirEntry& b) {
+                        tick();
+                        return EntryLess(a, b, item.sort_column, item.sort_direction);
+                    });
+            }
         } catch (const SortCancelled&) {
             res.cancelled = true;
             return res;
@@ -259,28 +282,35 @@ WorkResult WorkerPool::Process(const WorkItem& item) {
 void WorkerPool::WorkerThread() {
     while (running_) {
         WorkItem item;
-        std::function<void()> io_task;
+        IoTaskQueue::Job io_job;
         {
             std::unique_lock<std::mutex> lock(mutex_);
             cv_.wait(lock, [&] {
-                return stopped_ || !queue_.empty() || !io_queue_.empty() || !running_;
+                return stopped_ || !queue_.empty() || io_queue_.Ready() || !running_;
             });
             if (!running_ || stopped_) return;
             if (!queue_.empty()) {
                 item = std::move(queue_.front());
                 queue_.pop();
-            } else if (!io_queue_.empty()) {
-                io_task = std::move(io_queue_.front());
-                io_queue_.pop();
+            } else if (io_queue_.Ready()) {
+                io_job = io_queue_.Pop();
             } else {
                 continue;
             }
         }
-        if (io_task) {
-            try { io_task(); } catch (...) {}
+        if (io_job.task) {
+            try { io_job.task(); } catch (...) {}
+            { std::lock_guard lock(mutex_); io_queue_.Complete(io_job); }
+            cv_.notify_all();
             continue;
         }
+        const auto started = GetTickCount64();
+        diagnostics::runtime::Event("navigation_start", {{"generation", item.generation}, {"load_paths", item.load_paths}});
         WorkResult res = Process(item);
+        diagnostics::runtime::Event("navigation_end", {{"generation", item.generation},
+            {"cancelled", res.cancelled}, {"error", res.error},
+            {"entries", res.snapshot ? res.snapshot->size() : 0},
+            {"has_snapshot", res.snapshot != nullptr}, {"elapsed_ms", GetTickCount64() - started}});
         if (!res.cancelled && callback_) {
             const std::wstring cache_path = res.path;
             fs::SnapshotPtr cache_snapshot = res.snapshot;

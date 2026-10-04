@@ -1,4 +1,5 @@
 #include "../ui/edit_host.h"
+#include "../ui/FluentTokens.h"
 // app_hosted_edit.cpp — extracted from app_main.cpp.
 #include "app_internal.h"
 #include "address_bar_command.h"
@@ -53,6 +54,14 @@ std::wstring FormatAddressPath(const std::wstring& text) {
     return t;
 }
 
+std::wstring AddressNavigationTarget(const std::wstring& text, bool* shortcut) {
+    const app::AddressShortcut resolved = app::ResolveAddressShortcut(text);
+    if (shortcut) *shortcut = resolved.resolved;
+    if (!resolved.resolved) return FormatAddressPath(text);
+    if (resolved.path.empty() || resolved.path.starts_with(L"pulse:")) return resolved.path;
+    return FormatAddressPath(resolved.path);
+}
+
 LRESULT CALLBACK AddressEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
                                         UINT_PTR /*uIdSubclass*/, DWORD_PTR dwRefData);
 LRESULT CALLBACK RenameEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
@@ -68,7 +77,7 @@ static bool EraseHostedEditBackground(HWND hwnd, WPARAM wParam, AppState* s) {
     EnsureEditVisuals(*s);
     RECT rc{};
     GetClientRect(hwnd, &rc);
-    FillRect(reinterpret_cast<HDC>(wParam), &rc, s->editBrush);
+    FillRect(reinterpret_cast<HDC>(wParam), &rc, ui::EditBackBrush(s->editBrush));
     return true;
 }
 
@@ -135,7 +144,8 @@ void LayoutAddressEditor(AppState& s) {
 
 void EnsureEditVisuals(AppState& s) {
     if (!s.editFont) {
-        const int height = -std::max(1, static_cast<int>(std::lround(14.0f * s.scale)));
+        const int height = -std::max(1, static_cast<int>(std::lround(
+            14.0f * ui::typography::UiFontScale() * s.scale)));
         const wchar_t* family = ui::typography::PreferredTextFamily();
         s.editFont = CreateFontW(height, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
@@ -213,7 +223,7 @@ void HideAddressEditor(AppState& s, bool navigate) {
         // cmd / powershell / pwsh / wt open a console here instead of navigating.
         const app::AddressBarCommand command = app::ParseAddressBarCommand(buf);
         if (command.program != app::AddressBarProgram::None) RunAddressBarCommand(s, command);
-        else NavigateTo(s, FormatAddressPath(buf));
+        else NavigateTo(s, AddressNavigationTarget(buf));
     }
     s.addressIgnoreKillFocus = true;
     ShowWindow(s.hwndAddressEdit, SW_HIDE);
@@ -544,13 +554,11 @@ void HideTagRenameOverlay(AppState& s, bool commit) {
 
 
 D2D1_COLOR_F HostedEditForeground(const AppState& s) {
-    return s.darkMode ? D2D1::ColorF(1.0f, 1.0f, 1.0f)
-                      : D2D1::ColorF(26.0f / 255.0f, 26.0f / 255.0f, 26.0f / 255.0f);
+    return ui::ColorFromRef(ui::EditTextColor(s.darkMode));
 }
 
 D2D1_COLOR_F HostedEditBackground(const AppState& s) {
-    return s.darkMode ? D2D1::ColorF(30.0f / 255.0f, 30.0f / 255.0f, 30.0f / 255.0f)
-                      : D2D1::ColorF(1.0f, 1.0f, 1.0f);
+    return ui::ColorFromRef(ui::EditBackColor(s.darkMode));
 }
 
 IDWriteTextFormat* HostedEditFormat(AppState& s, HWND hwnd) {
@@ -571,7 +579,7 @@ bool HandleHostedEditMessage(AppState& s, HWND hwnd, UINT msg, WPARAM wParam,
     }
     EnsureEditVisuals(s);
     return ui::HandleChildEditMessage(s.compositor, HostedEditFormat(s, hwnd),
-        HostedEditForeground(s), HostedEditBackground(s), s.editBrush,
+        HostedEditForeground(s), HostedEditBackground(s), ui::EditBackBrush(s.editBrush),
         hwnd, msg, wParam, lParam, result);
 }
 

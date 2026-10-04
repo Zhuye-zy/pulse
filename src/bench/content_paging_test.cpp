@@ -38,10 +38,15 @@ int wmain(int argc, wchar_t** argv) {
         auto update=deliver({z,y}); auto store=session.Results(); index::ContentResultStore::Row row;
         Check(update && update->results==store && !session.Done() && store->Count()==2 && WaitRow(store,0,row) && row.file_id==12,
             "task publishes cached first batch in requested order before completion");
+        const auto selected_order = store->OrderRevision();
         auto doc=make(L"a.xls",10,0),code=make(L"m.cpp",30,0);
         update=deliver({doc,code});
         Check(update && !session.Done() && store->Count()==4 && store->Get(0,row) && row.entry.name==doc.name,
             "document and code batches merge into visible global order without blank cached page");
+        std::promise<index::ContentResultStore::Selection> stale_selection;
+        auto stale_result = stale_selection.get_future();
+        store->Resolve({0}, false, 2, [&](auto value) { stale_selection.set_value(std::move(value)); }, selected_order);
+        Check(stale_result.get().error == ERROR_CANCELLED, "selection from previous order cannot resolve to an inserted file");
         auto duplicate=doc; duplicate.path=L"c:\\FIXTURE\\A.XLS";
         update=deliver({duplicate,doc});
         Check(update && store->Count()==4 && store->RawCount()==4,"same Windows path across both sources is admitted only once");

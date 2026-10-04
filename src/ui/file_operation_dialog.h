@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FluentTokens.h"
+#include "confirm_dialog.h"
 #include "fluent_components.h"
 #include "ui_compositor.h"
 #include "../ops/ops_manager.h"
@@ -67,16 +68,5 @@ ConflictDialogResult ShowFileConflictDialog(HWND owner,
                                             const ops::ConflictItemInfo& conflict,
                                             bool dark,
                                             D2D1_COLOR_F accent);
-
-struct ConfirmDialogSpec {
-    std::wstring title;
-    std::wstring message;
-    std::wstring confirm_text;
-    std::wstring cancel_text;
-    bool danger = false;
-};
-
-bool ShowConfirmDialog(HWND owner, const ConfirmDialogSpec& spec, bool dark,
-                       D2D1_COLOR_F accent);
 
 } // namespace pulse::ui

@@ -292,14 +292,12 @@ LRESULT CALLBACK FluentMenu::MenuWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
     const bool is_sub = hwnd == self->sub_hwnd_ && self->sub_hwnd_ != nullptr;
     switch (msg) {
     case WM_MOUSEWHEEL:
-        if (!is_sub && self->max_visible_rows_ > 0) {
-            self->scroll_y_ = std::clamp(self->scroll_y_ -
-                GET_WHEEL_DELTA_WPARAM(wParam) / static_cast<float>(WHEEL_DELTA) *
-                self->model_.RowHeightPx() * 3.0f, 0.0f,
-                std::max(0.0f, self->model_.HeightPx() - self->BodyHeightPx()));
-            self->hover_row_ = -1;
-            self->UpdateTooltip(-1);
-            if (self->Render()) self->Present(255, 0);
+        if (!is_sub && self->Scrollable()) {
+            const int notches = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+            const int rows = notches != 0 ? -notches * 3
+                : (GET_WHEEL_DELTA_WPARAM(wParam) > 0 ? -1 : 1); // high-resolution wheels
+            if (self->ScrollRows(rows) && self->Render())
+                self->Present(255, self->present_offset_);
             return 0;
         }
         break;
@@ -320,6 +318,10 @@ LRESULT CALLBACK FluentMenu::MenuWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
             }
         } else {
             // Keep the flyout: the pointer may be crossing onto it.
+            if (self->arrow_hover_ != 0) {
+                self->arrow_hover_ = 0;
+                if (self->hover_row_ < 0 && self->Render()) self->Present(255, self->present_offset_);
+            }
             self->UpdateHover(-1);
         }
         return 0;
@@ -342,12 +344,12 @@ LRESULT CALLBACK FluentMenu::MenuWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
     case WM_CTLCOLOREDIT: {
         const bool dark = self->dark_;
         HDC hdc = reinterpret_cast<HDC>(wParam);
-        SetTextColor(hdc, dark ? RGB(255, 255, 255) : RGB(26, 26, 26));
-        SetBkColor(hdc, dark ? RGB(30, 30, 30) : RGB(255, 255, 255));
+        SetTextColor(hdc, EditTextColor(dark));
+        SetBkColor(hdc, EditBackColor(dark));
         if (!self->edit_brush_) {
             self->edit_brush_ = CreateSolidBrush(dark ? RGB(30, 30, 30) : RGB(255, 255, 255));
         }
-        return reinterpret_cast<LRESULT>(self->edit_brush_);
+        return reinterpret_cast<LRESULT>(EditBackBrush(self->edit_brush_));
     }
     case WM_COMMAND:
         if (HIWORD(wParam) == EN_CHANGE && self->edit_ &&
@@ -372,9 +374,91 @@ LRESULT CALLBACK FluentMenu::MenuWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
 }
 
 float FluentMenu::BodyHeightPx() const {
+    if (overflow_) return body_limit_px_;
     if (max_visible_rows_ <= 0) return static_cast<float>(model_.HeightPx());
     return std::min(body_limit_px_ > 0 ? body_limit_px_ : static_cast<float>(model_.HeightPx()),
         model_.RowTopPx(std::min(max_visible_rows_, model_.Count())) + 4.0f * scale_);
+}
+
+float FluentMenu::ArrowPx() const {
+    return overflow_ ? std::round(kScrollArrowDip * scale_) : 0.0f;
+}
+
+float FluentMenu::ViewportPx() const {
+    return std::max(0.0f, BodyHeightPx() - ArrowPx() * 2.0f);
+}
+
+float FluentMenu::MaxScrollPx() const {
+    return std::max(0.0f, static_cast<float>(model_.HeightPx()) - ViewportPx());
+}
+
+void FluentMenu::ApplyHeightLimit(float available_px) {
+    overflow_ = false;
+    if (max_visible_rows_ > 0) {
+        body_limit_px_ = std::max(model_.RowHeightPx(), available_px);
+    } else if (static_cast<float>(model_.HeightPx()) > available_px) {
+        // Taller than the work area (#67): keep the card on screen and scroll
+        // the rows between two arrow strips, like native menus do.
+        overflow_ = true;
+        body_limit_px_ = std::max(available_px, ArrowPx() * 2.0f + model_.RowHeightPx());
+    } else {
+        body_limit_px_ = 0.0f;
+    }
+    scroll_y_ = std::clamp(scroll_y_, 0.0f, MaxScrollPx());
+}
+
+bool FluentMenu::ScrollTo(float y) {
+    const float clamped = std::clamp(y, 0.0f, MaxScrollPx());
+    if (std::abs(clamped - scroll_y_) < 0.01f) return false;
+    scroll_y_ = clamped;
+    // Rows moved under the pointer: drop the hover, its tooltip and a flyout
+    // that was anchored to a row which is somewhere else now.
+    if (sub_parent_row_ >= 0) HideSubWindow();
+    hover_row_ = -1;
+    hover_swatch_ = -1;
+    UpdateTooltip(-1);
+    return true;
+}
+
+bool FluentMenu::ScrollRows(int rows) {
+    if (rows == 0 || model_.Count() == 0) return false;
+    // First row whose top is at or below the viewport top; a half-hidden row
+    // above it is the one a step up reveals.
+    // Scrolled rows sit flush under the top arrow; only the very top keeps
+    // the menu's leading padding.
+    int first = model_.Count() - 1;
+    for (int i = 0; i < model_.Count(); ++i) {
+        if (model_.RowTopPx(i) >= scroll_y_ - 0.5f) {
+            first = i;
+            break;
+        }
+    }
+    const int target = std::clamp(first + rows, 0, model_.Count() - 1);
+    return ScrollTo(target == 0 ? 0.0f : model_.RowTopPx(target));
+}
+
+void FluentMenu::TickArrowScroll() {
+    const auto now = std::chrono::steady_clock::now();
+    if (arrow_hover_ == 0) {
+        arrow_tick_ = {};
+        arrow_accum_ms_ = 0.0f;
+        return;
+    }
+    if (arrow_tick_ == std::chrono::steady_clock::time_point{}) {
+        arrow_tick_ = now;
+        arrow_accum_ms_ = 0.0f;
+        return;
+    }
+    arrow_accum_ms_ += std::min(100.0f,
+        std::chrono::duration<float, std::milli>(now - arrow_tick_).count());
+    arrow_tick_ = now;
+    int steps = 0;
+    while (arrow_accum_ms_ >= kScrollArrowMsPerRow) {
+        arrow_accum_ms_ -= kScrollArrowMsPerRow;
+        ++steps;
+    }
+    if (steps > 0 && ScrollRows(arrow_hover_ * steps) && Render())
+        Present(255, present_offset_);
 }
 
 void FluentMenu::LayoutWindow(POINT screen_pt) {
@@ -384,11 +468,9 @@ void FluentMenu::LayoutWindow(POINT screen_pt) {
     HMONITOR mon = MonitorFromPoint(screen_pt, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi{ sizeof(mi) };
     GetMonitorInfoW(mon, &mi);
-    if (max_visible_rows_ > 0) {
-        body_limit_px_ = std::max(model_.RowHeightPx(),
-            static_cast<float>(mi.rcWork.bottom - mi.rcWork.top - kShadowMargin * 2) - FilterHeaderPx());
-        h = static_cast<int>(std::ceil(BodyHeightPx())) + static_cast<int>(FilterHeaderPx()) + kShadowMargin * 2;
-    }
+    ApplyHeightLimit(static_cast<float>(mi.rcWork.bottom - mi.rcWork.top - kShadowMargin * 2) -
+                     FilterHeaderPx());
+    h = static_cast<int>(std::ceil(BodyHeightPx())) + static_cast<int>(FilterHeaderPx()) + kShadowMargin * 2;
     int x = screen_pt.x;
     int y = screen_pt.y;
     if (dropdown_) {
@@ -527,9 +609,11 @@ bool FluentMenu::RenderSurface(const FluentMenuModel& model, int hover_row, int 
             painter_.DrawTextField(field);
         }
         if (header > 0) y += (float)header;
-        dc->PushAxisAlignedClip(D2D1::RectF(static_cast<float>(kShadowMargin), y,
-            static_cast<float>(kShadowMargin + cw), y + body), D2D1_ANTIALIAS_MODE_ALIASED);
-        y += model.RowTopPx(0) - (main ? scroll_y_ : 0.0f);
+        const float body_top = y;
+        const float arrow = main ? ArrowPx() : 0.0f;
+        dc->PushAxisAlignedClip(D2D1::RectF(static_cast<float>(kShadowMargin), y + arrow,
+            static_cast<float>(kShadowMargin + cw), y + body - arrow), D2D1_ANTIALIAS_MODE_ALIASED);
+        y += arrow + model.RowTopPx(0) - (main ? scroll_y_ : 0.0f);
         for (int i = 0; i < model.Count(); ++i) {
             const FluentMenuItem* it = model.At(i);
             fluent::MenuItemSpec spec;
@@ -600,6 +684,24 @@ bool FluentMenu::RenderSurface(const FluentMenuModel& model, int hover_row, int 
             if (it->separator_after) y += 5.0f * scale_;
         }
         dc->PopAxisAlignedClip();
+        if (arrow > 0.0f) {
+            const float max_scroll = MaxScrollPx();
+            for (int dir = -1; dir <= 1; dir += 2) {
+                const float top = dir < 0 ? body_top : body_top + static_cast<float>(body) - arrow;
+                const D2D1_RECT_F strip = D2D1::RectF(
+                    static_cast<float>(kShadowMargin) + 4.0f * scale_, top + 2.0f * scale_,
+                    static_cast<float>(kShadowMargin + cw) - 4.0f * scale_, top + arrow - 2.0f * scale_);
+                const bool can_scroll = dir < 0 ? scroll_y_ > 0.5f : scroll_y_ < max_scroll - 0.5f;
+                if (can_scroll && arrow_hover_ == dir)
+                    painter_.FillRoundedRect(strip, 4.0f * scale_, theme.fill_hover);
+                const float g = 6.0f * scale_;
+                const float cx = (strip.left + strip.right) * 0.5f;
+                const float cy = (strip.top + strip.bottom) * 0.5f;
+                painter_.DrawGlyph(dir < 0 ? L"\xE70E" : L"\xE70D",
+                    D2D1::RectF(cx - g, cy - g, cx + g, cy + g),
+                    can_scroll ? theme.text_secondary : theme.text_disabled);
+            }
+        }
     }
 
     HRESULT hr = dc->EndDraw();
@@ -714,7 +816,8 @@ void FluentMenu::OpenSubmenu(int row) {
     const int h = sub_model_.HeightPx() + kShadowMargin * 2;
     const int overlap = (int)std::lround(4.0f * scale_);
     // First child row lines up with the header row.
-    int y = base_y_ + present_offset_ + (int)(FilterHeaderPx() + model_.RowTopPx(row)) -
+    int y = base_y_ + present_offset_ +
+            (int)(FilterHeaderPx() + ArrowPx() + model_.RowTopPx(row) - scroll_y_) -
             (int)sub_model_.RowTopPx(0);
     int x = base_x_ + model_.WidthPx() - overlap; // card edges overlap by 4dip
 
@@ -768,7 +871,30 @@ void FluentMenu::OnSubMouse(POINT client_pt, bool button_up) {
 void FluentMenu::OnMouse(POINT client_pt, bool button_up) {
     if (!open_ || animating_out_) return;
     float y = (float)client_pt.y - (float)kShadowMargin - FilterHeaderPx();
-    int row = y >= 0 && y < BodyHeightPx() ? model_.HitTestRow(y + scroll_y_) : -1;
+    const float body_h = BodyHeightPx();
+    const float arrow = ArrowPx();
+    int zone = 0; // -1 / +1: over the top / bottom scroll arrow (#67)
+    if (arrow > 0.0f && y >= 0 && y < body_h)
+        zone = y < arrow ? -1 : (y >= body_h - arrow ? 1 : 0);
+    const bool zone_changed = zone != arrow_hover_;
+    arrow_hover_ = zone;
+    if (zone_changed) arrow_tick_ = {};
+    if (zone != 0) {
+        sub_pending_row_ = -1;
+        if (button_up) {
+            // A click pages; resting on the arrow scrolls continuously.
+            const int page = std::max(1, static_cast<int>(ViewportPx() / model_.RowHeightPx()) - 1);
+            if (ScrollRows(zone * page) && Render())
+                Present(255, present_offset_);
+            return;
+        }
+        UpdateTooltip(-1);
+        if (hover_row_ >= 0) UpdateHover(-1);
+        else if (zone_changed && Render()) Present(255, present_offset_);
+        return;
+    }
+    if (zone_changed && Render()) Present(255, present_offset_);
+    int row = y >= 0 && y < body_h ? model_.HitTestRow(y - arrow + scroll_y_) : -1;
     const FluentMenuItem* it = model_.At(row);
     const bool flyout_header = it && it->enabled && !it->children.empty();
     if (button_up) {
@@ -961,11 +1087,12 @@ void FluentMenu::UpdateHover(int row, int swatch) {
     UpdateTooltip(-1);
     hover_row_ = row;
     hover_swatch_ = swatch;
-    if (row >= 0 && max_visible_rows_ > 0) {
+    if (row >= 0 && Scrollable()) {
         const float top = model_.RowTopPx(row);
-        if (top < scroll_y_) scroll_y_ = top;
-        if (top + model_.RowHeightPx() > scroll_y_ + BodyHeightPx())
-            scroll_y_ = top + model_.RowHeightPx() - BodyHeightPx();
+        if (top < scroll_y_) scroll_y_ = top <= model_.RowTopPx(0) + 0.5f ? 0.0f : top;
+        if (top + model_.RowHeightPx() > scroll_y_ + ViewportPx())
+            scroll_y_ = row == model_.Count() - 1 ? MaxScrollPx()
+                                                  : top + model_.RowHeightPx() - ViewportPx();
     }
     if (Render()) Present(255, 0);
 }
@@ -1050,7 +1177,7 @@ bool FluentMenu::EnsureFilterEdit() {
         SetLayeredWindowAttributes(edit_, 0, 255, LWA_ALPHA);
     SendMessageW(edit_, WM_SETFONT, (WPARAM)edit_font_, TRUE);
     SendMessageW(edit_, EM_SETCUEBANNER, TRUE,
-        reinterpret_cast<LPARAM>(L"\u641C\u7D22\u547D\u4EE4\u3001\u6587\u4EF6\u5939\u2026"));
+        reinterpret_cast<LPARAM>(l10n::Get(l10n::StringId::TabMenuSearch).c_str()));
     SetWindowSubclass(edit_, FilterEditProc, 1, reinterpret_cast<DWORD_PTR>(this));
     return true;
 }
@@ -1144,12 +1271,8 @@ LRESULT CALLBACK FluentMenu::FilterEditProc(HWND hwnd, UINT msg, WPARAM wParam, 
             const LRESULT result = self->compositor_->CallLumaEditMouse(
                 hwnd, msg, wParam, lParam, self->compositor_->TextFormat());
             if (msg != WM_MOUSEMOVE || GetCapture() == hwnd) {
-                const D2D1_COLOR_F fg = self->dark_
-                    ? D2D1::ColorF(1.0f, 1.0f, 1.0f)
-                    : D2D1::ColorF(26.0f / 255.0f, 26.0f / 255.0f, 26.0f / 255.0f);
-                const D2D1_COLOR_F bg = self->dark_
-                    ? D2D1::ColorF(30.0f / 255.0f, 30.0f / 255.0f, 30.0f / 255.0f)
-                    : D2D1::ColorF(1.0f, 1.0f, 1.0f);
+                const D2D1_COLOR_F fg = ColorFromRef(EditTextColor(self->dark_));
+                const D2D1_COLOR_F bg = ColorFromRef(EditBackColor(self->dark_));
                 self->compositor_->PresentLumaEdit(hwnd, self->compositor_->TextFormat(),
                                                    fg, bg);
             }
@@ -1181,12 +1304,8 @@ LRESULT CALLBACK FluentMenu::FilterEditProc(HWND hwnd, UINT msg, WPARAM wParam, 
     case WM_PAINT: {
         if (!self->compositor_ || !self->compositor_->LumaTextEnabled()) break;
         HideCaret(hwnd);
-        const D2D1_COLOR_F fg = self->dark_
-            ? D2D1::ColorF(1.0f, 1.0f, 1.0f)
-            : D2D1::ColorF(26.0f / 255.0f, 26.0f / 255.0f, 26.0f / 255.0f);
-        const D2D1_COLOR_F bg = self->dark_
-            ? D2D1::ColorF(30.0f / 255.0f, 30.0f / 255.0f, 30.0f / 255.0f)
-            : D2D1::ColorF(1.0f, 1.0f, 1.0f);
+        const D2D1_COLOR_F fg = ColorFromRef(EditTextColor(self->dark_));
+        const D2D1_COLOR_F bg = ColorFromRef(EditBackColor(self->dark_));
         if (!self->compositor_->PresentLumaEdit(hwnd, self->compositor_->TextFormat(),
                                                 fg, bg)) {
             PAINTSTRUCT ps{};
@@ -1197,7 +1316,7 @@ LRESULT CALLBACK FluentMenu::FilterEditProc(HWND hwnd, UINT msg, WPARAM wParam, 
                 self->edit_brush_ = CreateSolidBrush(
                     self->dark_ ? RGB(30, 30, 30) : RGB(255, 255, 255));
             }
-            FillRect(hdc, &rc, self->edit_brush_);
+            FillRect(hdc, &rc, EditBackBrush(self->edit_brush_));
             EndPaint(hwnd, &ps);
         }
         return 0;
@@ -1207,12 +1326,8 @@ LRESULT CALLBACK FluentMenu::FilterEditProc(HWND hwnd, UINT msg, WPARAM wParam, 
         if (self->compositor_ && self->compositor_->LumaTextEnabled()) {
             HideCaret(hwnd);
             SetTimer(hwnd, 71, GetCaretBlinkTime(), nullptr);
-            const D2D1_COLOR_F fg = self->dark_
-                ? D2D1::ColorF(1.0f, 1.0f, 1.0f)
-                : D2D1::ColorF(26.0f / 255.0f, 26.0f / 255.0f, 26.0f / 255.0f);
-            const D2D1_COLOR_F bg = self->dark_
-                ? D2D1::ColorF(30.0f / 255.0f, 30.0f / 255.0f, 30.0f / 255.0f)
-                : D2D1::ColorF(1.0f, 1.0f, 1.0f);
+            const D2D1_COLOR_F fg = ColorFromRef(EditTextColor(self->dark_));
+            const D2D1_COLOR_F bg = ColorFromRef(EditBackColor(self->dark_));
             self->compositor_->PresentLumaEdit(hwnd, self->compositor_->TextFormat(),
                                                fg, bg);
         } else {
@@ -1227,12 +1342,8 @@ LRESULT CALLBACK FluentMenu::FilterEditProc(HWND hwnd, UINT msg, WPARAM wParam, 
         if (wParam == 71) {
             if (GetCapture() != hwnd && self->compositor_ &&
                 self->compositor_->LumaTextEnabled()) {
-                const D2D1_COLOR_F fg = self->dark_
-                    ? D2D1::ColorF(1.0f, 1.0f, 1.0f)
-                    : D2D1::ColorF(26.0f / 255.0f, 26.0f / 255.0f, 26.0f / 255.0f);
-                const D2D1_COLOR_F bg = self->dark_
-                    ? D2D1::ColorF(30.0f / 255.0f, 30.0f / 255.0f, 30.0f / 255.0f)
-                    : D2D1::ColorF(1.0f, 1.0f, 1.0f);
+                const D2D1_COLOR_F fg = ColorFromRef(EditTextColor(self->dark_));
+                const D2D1_COLOR_F bg = ColorFromRef(EditBackColor(self->dark_));
                 self->compositor_->PresentLumaEdit(hwnd, self->compositor_->TextFormat(),
                                                    fg, bg);
             } else if (GetCapture() != hwnd) {
@@ -1250,7 +1361,7 @@ LRESULT CALLBACK FluentMenu::FilterEditProc(HWND hwnd, UINT msg, WPARAM wParam, 
                 self->edit_brush_ = CreateSolidBrush(
                     self->dark_ ? RGB(30, 30, 30) : RGB(255, 255, 255));
             }
-            FillRect(reinterpret_cast<HDC>(wParam), &rc, self->edit_brush_);
+            FillRect(reinterpret_cast<HDC>(wParam), &rc, EditBackBrush(self->edit_brush_));
             return 1;
         }
     }
@@ -1378,6 +1489,7 @@ int FluentMenu::RunModalLoop() {
                 if (r == hover_row_) OpenSubmenu(r);
             }
         }
+        if (open_ && !animating_out_ && overflow_) TickArrowScroll();
         DWORD wait = MsgWaitForMultipleObjects(0, nullptr, FALSE, 16, QS_ALLINPUT);
         (void)wait;
         if (topmost_ && open_ && !animating_out_ &&
@@ -1406,7 +1518,7 @@ int FluentMenu::RunModalLoop() {
             if (open_ && !animating_out_) {
                 switch (msg.message) {
                 case WM_MOUSEWHEEL:
-                    if (max_visible_rows_ > 0) {
+                    if (Scrollable()) {
                         SendMessageW(hwnd_, WM_MOUSEWHEEL, msg.wParam, msg.lParam);
                         swallow = true;
                     }
@@ -1548,6 +1660,9 @@ int FluentMenu::TrackPopup(POINT screen_pt, std::vector<FluentMenuItem> items,
     top_center_ = top_center;
     scroll_y_ = 0.0f;
     body_limit_px_ = 0.0f;
+    overflow_ = false;
+    arrow_hover_ = 0;
+    arrow_tick_ = {};
     if (items.empty() && !filter_fn_) {
         dropdown_ = false;
         external_edit_ = nullptr;
@@ -1604,6 +1719,9 @@ int FluentMenu::TrackPopup(POINT screen_pt, std::vector<FluentMenuItem> items,
     filter_min_width_ = 0.0f;
     max_visible_rows_ = 0;
     scroll_y_ = 0.0f;
+    overflow_ = false;
+    arrow_hover_ = 0;
+    arrow_tick_ = {};
     anchor_to_rect_ = false;
     dropdown_ = false;
     hover_first_on_open_ = true;
@@ -1641,7 +1759,32 @@ void FluentMenu::RequestFilterRefresh() {
 
 bool FluentMenu::ReplaceItems(std::vector<FluentMenuItem> items) {
     if (!open_ || animating_out_ || filter_fn_ || !compositor_ || items.empty()) return false;
-    if (!model_.PatchCommands(items)) return false;
+    if (model_.PatchCommands(items)) return true;
+    // The rows changed shape: a context menu opened before the shell host
+    // answered (no cached layout for this type yet) only had Pulse's own rows,
+    // and the Explorer section (New, archivers, ...) arrives afterwards. Rebuild
+    // in place so those rows show up in this menu instead of the next one
+    // (#73). Shell rows are appended after the built-in ones, so the rows under
+    // the cursor keep their place. A visible flyout would be yanked away by the
+    // relayout, so that case keeps the current rows.
+    if (dropdown_ || sub_parent_row_ >= 0) return false;
+    std::wstring hover_text;
+    if (const FluentMenuItem* it = model_.At(hover_row_)) hover_text = it->text;
+    model_.SetItems(std::move(items));
+    model_.Layout(compositor_->DwriteFactory(), scale_, 0.0f);
+    hover_row_ = -1;
+    if (!hover_text.empty()) {
+        for (int i = 0; i < model_.Count(); ++i) {
+            const FluentMenuItem* it = model_.At(i);
+            if (it && it->enabled && it->text == hover_text) { hover_row_ = i; break; }
+        }
+    }
+    hover_swatch_ = -1;
+    sub_pending_row_ = -1;
+    UpdateTooltip(-1);
+    LayoutWindow(popup_pt_);
+    // The modal loop presents every frame (and owns the open fade).
+    Render();
     return true;
 }
 

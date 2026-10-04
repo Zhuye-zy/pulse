@@ -42,6 +42,7 @@ struct GroupWheelData {
     std::vector<GroupWheelOption> options;
     int applied = 0;            // index into options
     std::wstring current_text, scroll_text, apply_text, cancel_text;
+    std::wstring apply_all_text;   // group picker footer button; empty = hidden
     // Sort picker: direction + folder segments under the preview, the preview
     // shows `files` instead of group headers, and Left/Right set the direction.
     bool sort_controls = false;
@@ -59,8 +60,14 @@ public:
     void Close();                          // fades out (instant without animation)
     bool IsOpen() const noexcept { return open_; }
     bool Visible() const noexcept { return open_ || closing_; }
+    // 0..1 open amount, frame-stable (follows the fade; 0/1 without animation).
+    float OpenAmount() const noexcept { return Visible() ? fade_value_ : 0.0f; }
+    bool IsSortPicker() const noexcept { return data_.sort_controls; }
 
     bool Contains(float x, float y) const noexcept;
+    // Footer "apply to all folders" button (laid out while drawing).
+    bool HitApplyAll(float x, float y) const noexcept;
+    bool HoverApplyAll(float x, float y) noexcept;  // true when the highlight changed
     void Step(int delta);                  // roll by whole rows (keys, wheel)
     void StepTo(int index);
     bool PointerDown(float x, float y);    // true when a drag started in the drum
@@ -97,6 +104,8 @@ private:
 
     GroupWheelData data_;
     D2D1_RECT_F panel_{};
+    D2D1_RECT_F apply_all_rect_{};
+    bool apply_all_hot_ = false;
     float scale_ = 1.0f;
     bool animate_ = true;
     bool open_ = false, closing_ = false;

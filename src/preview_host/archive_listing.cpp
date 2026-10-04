@@ -37,6 +37,7 @@ struct Listing {
 
 constexpr size_t kMaxEntries = 100000;
 constexpr size_t kMaxRows = 20000;
+constexpr size_t kMaxDepth = 64;  // also bounds recursive totals, emission and destruction
 constexpr size_t kPayloadBudget = 500u * 1024u;  // under ipc::kPreviewMaxArchiveChars
 constexpr ULONGLONG kLibarchiveBudgetMs = 1200;
 
@@ -135,6 +136,21 @@ std::wstring Serialize(Listing& listing) {
     root.dir = true;
     for (Entry& entry : listing.entries) {
         std::replace(entry.path.begin(), entry.path.end(), L'\\', L'/');
+        size_t depth = 0;
+        size_t cursor = 0;
+        while (cursor < entry.path.size()) {
+            size_t end = entry.path.find(L'/', cursor);
+            if (end == std::wstring::npos) end = entry.path.size();
+            const std::wstring_view part(entry.path.data() + cursor, end - cursor);
+            if (!part.empty() && part != L"." && part != L"..") ++depth;
+            if (depth > kMaxDepth) break;
+            cursor = end + 1;
+        }
+        if (depth > kMaxDepth) {
+            listing.incomplete = true;
+            ++listing.skipped;
+            continue;
+        }
         Node* node = &root;
         size_t start = 0;
         while (start < entry.path.size()) {

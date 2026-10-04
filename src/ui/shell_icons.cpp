@@ -89,6 +89,7 @@ void ShellIconCache::SetDeviceContext(ID2D1DeviceContext* dc) {
     if (dc_ == dc) return;
     dc_ = dc;
     bitmaps_.clear();
+    artwork_bounds_.clear();
 }
 
 void ShellIconCache::SetScale(float scale) {
@@ -112,6 +113,7 @@ void ShellIconCache::Reset() {
     cv_.notify_all();
     if (worker_.joinable()) worker_.join();
     bitmaps_.clear();
+    artwork_bounds_.clear();
     generic_index_.clear();
     for (auto& [_, list] : image_lists_)
         if (list) list->Release();
@@ -230,6 +232,7 @@ void ShellIconCache::WorkerLoop() {
             IconPixels pixels;
             const bool ok = ConvertIconPixels(convert_key, worker_lists, worker_wic,
                                               pixels.width, pixels.height, pixels.data);
+            if (ok) pixels.bounds = MeasureIconArtwork(pixels.data, pixels.width, pixels.height);
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 convert_pending_.erase(convert_key);
@@ -301,7 +304,7 @@ void ShellIconCache::WorkerLoop() {
     if (SUCCEEDED(com_hr)) CoUninitialize();
 }
 
-ComPtr<ID2D1Bitmap> ShellIconCache::BitmapFromIcon(HICON icon) {
+ComPtr<ID2D1Bitmap> ShellIconCache::BitmapFromIcon(HICON icon, IconArtworkBounds& bounds) {
     ComPtr<ID2D1Bitmap> bitmap;
     if (!icon || !dc_ || !EnsureWic()) return bitmap;
     ComPtr<IWICBitmap> wicBitmap;
@@ -317,7 +320,16 @@ ComPtr<ID2D1Bitmap> ShellIconCache::BitmapFromIcon(HICON icon) {
                                      WICBitmapPaletteTypeMedianCut))) {
         return bitmap;
     }
-    dc_->CreateBitmapFromWicBitmap(converter.get(), nullptr, &bitmap);
+    UINT width = 0, height = 0;
+    if (FAILED(converter->GetSize(&width, &height)) || !width || !height ||
+        width > 1024 || height > 1024) return bitmap;
+    std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4u);
+    if (FAILED(converter->CopyPixels(nullptr, width * 4u,
+        static_cast<UINT>(pixels.size()), pixels.data()))) return bitmap;
+    bounds = MeasureIconArtwork(pixels, width, height);
+    const auto props = D2D1::BitmapProperties(
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+    dc_->CreateBitmap(D2D1::SizeU(width, height), pixels.data(), width * 4u, props, &bitmap);
     return bitmap;
 }
 
@@ -333,16 +345,22 @@ ID2D1Bitmap* ShellIconCache::BitmapForIndex(int index, int list_id) {
     if (FAILED(image_list->GetIcon(index, ILD_TRANSPARENT, &icon)) || !icon) {
         return nullptr;
     }
-    ComPtr<ID2D1Bitmap> bitmap = BitmapFromIcon(icon);
+    IconArtworkBounds bounds;
+    ComPtr<ID2D1Bitmap> bitmap = BitmapFromIcon(icon, bounds);
     DestroyIcon(icon);
-    return StoreBitmap(key, std::move(bitmap));
+    return StoreBitmap(key, std::move(bitmap), bounds);
 }
 
-ID2D1Bitmap* ShellIconCache::StoreBitmap(uint64_t key, ComPtr<ID2D1Bitmap> bitmap) {
+ID2D1Bitmap* ShellIconCache::StoreBitmap(uint64_t key, ComPtr<ID2D1Bitmap> bitmap,
+                                        IconArtworkBounds bounds) {
     if (!bitmap.get()) return nullptr;
     ID2D1Bitmap* raw = bitmap.get();
-    if (bitmaps_.size() >= kBitmapCacheLimit) bitmaps_.erase(bitmaps_.begin());
+    if (bitmaps_.size() >= kBitmapCacheLimit) {
+        artwork_bounds_.erase(bitmaps_.begin()->first);
+        bitmaps_.erase(bitmaps_.begin());
+    }
     bitmaps_[key] = std::move(bitmap);
+    artwork_bounds_[key] = bounds;
     return raw;
 }
 
@@ -361,7 +379,7 @@ ID2D1Bitmap* ShellIconCache::UploadReady(uint64_t key) {
         D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
     if (FAILED(dc_->CreateBitmap(D2D1::SizeU(pixels.width, pixels.height), pixels.data.data(),
                                  pixels.width * 4u, props, &bitmap))) return nullptr;
-    return StoreBitmap(key, std::move(bitmap));
+    return StoreBitmap(key, std::move(bitmap), pixels.bounds);
 }
 
 void ShellIconCache::Prefetch(const std::wstring& path, const std::wstring& name,
@@ -422,6 +440,25 @@ ID2D1Bitmap* ShellIconCache::BitmapFor(const std::wstring& path, const std::wstr
 ID2D1Bitmap* ShellIconCache::CachedBitmapFor(const std::wstring& path, const std::wstring& name,
                                              bool is_dir, DWORD attrs, float desired_dips) {
     (void)attrs;  // generic icons are keyed by extension only (see GenericIndex)
+    const auto key = CachedBitmapKey(path, name, is_dir, desired_dips, true);
+    return key ? bitmaps_.at(*key).get() : nullptr;
+}
+
+D2D1_RECT_F ShellIconCache::CachedArtworkBounds(const std::wstring& path,
+    const std::wstring& name, bool is_dir, DWORD attrs, float desired_dips) {
+    (void)attrs;
+    const auto key = CachedBitmapKey(path, name, is_dir, desired_dips, false);
+    if (key) {
+        if (const auto it = artwork_bounds_.find(*key); it != artwork_bounds_.end()) {
+            const auto& b = it->second;
+            return D2D1::RectF(b.left, b.top, b.right, b.bottom);
+        }
+    }
+    return D2D1::RectF(0.0f, 0.0f, 1.0f, 1.0f);
+}
+
+std::optional<uint64_t> ShellIconCache::CachedBitmapKey(const std::wstring& path,
+    const std::wstring& name, bool is_dir, float desired_dips, bool upload_ready) {
     int exact = -1;
     if (NeedsExactIcon(name, is_dir, path) && !path.empty()) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -449,10 +486,10 @@ ID2D1Bitmap* ShellIconCache::CachedBitmapFor(const std::wstring& path, const std
         for (int i = 0; i < n; ++i) {
             const uint64_t key = IconKey(lists[i], index);
             if (const auto it = bitmaps_.find(key); it != bitmaps_.end() && it->second.get())
-                return it->second.get();
-            if (ID2D1Bitmap* ready = UploadReady(key)) return ready;
+                return key;
+            if (upload_ready && UploadReady(key)) return key;
         }
     }
-    return nullptr;
+    return std::nullopt;
 }
 } // namespace pulse::ui

@@ -1601,6 +1601,29 @@ int RunDeltaCacheTest(const std::filesystem::path& base) {
     return failed ? 1 : 0;
 }
 
+int RunEncodingCacheTest(const std::filesystem::path& base) {
+    const auto root = base / L"encoding-files";
+    std::filesystem::create_directories(root);
+    Write(root / L"encoded.txt", std::string("\xb1\xa8\xb8\xe6", 4));
+    const auto cache = (base / L"encoding.sqlite").wstring();
+    index::ContentIndexConfig config; config.roots={{root.wstring(), text::Encoding::Gb18030}};
+    config.default_encoding=text::Encoding::Gb18030;
+    {
+        index::ContentIndex legacy(cache);
+        Check(legacy.Configure(config) && legacy.WaitUntilIdle(10000), "legacy encoding fixture builds");
+        index::ContentSearchRequest request; request.needle=L"报告";
+        Check(Search(legacy,request).size()==1, "legacy cache contains decoded GB18030 body");
+    }
+    index::ContentIndex instant(cache,index::ContentAgentMode::Instant);
+    config.roots.front().encoding=text::Encoding::Utf8; config.default_encoding=text::Encoding::Utf8;
+    Check(instant.Configure(config), "instant encoding changes without rewriting old body cache");
+    index::ContentSearchRequest request; request.needle=L"报告"; request.root=root.wstring();
+    std::atomic<bool> cancel{false}; size_t hits=0; bool done=false;
+    instant.SearchTask(request,cancel,[&](const auto& progress,auto batch) { hits+=batch.size(); done|=progress.done; return true; });
+    Check(done && hits==0, "unchanged file cannot reuse body decoded with previous encoding");
+    return failed ? 1:0;
+}
+
 int RunInstantLifecycleTests(const std::filesystem::path& base);
 int RunInstantGapTests(const std::filesystem::path& base);
 int wmain() {
@@ -1611,6 +1634,7 @@ int wmain() {
         std::filesystem::path path;
         ~CleanupFixture() { std::error_code error; std::filesystem::remove_all(path, error); }
     } cleanup_fixture{base};
+    if (GetEnvironmentVariableW(L"PULSE_TEST_ENCODING_CACHE", nullptr, 0)) return RunEncodingCacheTest(base);
     if (GetEnvironmentVariableW(L"PULSE_TEST_TASK_TEXT_BENCH_ROOT", nullptr, 0)) return RunTaskTextIoBenchmark(base);
     if (GetEnvironmentVariableW(L"PULSE_TEST_DELTA_CACHE", nullptr, 0)) return RunDeltaCacheTest(base);
     if (GetEnvironmentVariableW(L"PULSE_TEST_INSTANT_GAPS", nullptr, 0)) return RunInstantGapTests(base);

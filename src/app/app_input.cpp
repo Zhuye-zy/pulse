@@ -1,5 +1,6 @@
 // app_input.cpp — extracted from app_main.cpp.
 #include "quick_access.h"
+#include "app_prompts.h"
 #include "vertical_tabs.h"
 #include "tab_shortcuts.h"
 #include "app_updates.h"
@@ -23,6 +24,7 @@
 #include "context_menu.h"
 #include "batch_rename.h"
 #include "blank_pane_click.h"
+#include "drop_staging.h"
 #include "link_resolve.h"
 #include "resource.h"
 #include "../ops/clipboard.h"
@@ -142,7 +144,8 @@ std::wstring ResolveHeaderDropFolder(const std::vector<std::wstring>& sources) {
 // and returns the DROPEFFECT_* to report back. Also drives the 800ms
 // spring-loaded folder enter and Esc-back.
 DWORD ResolveDropTarget(AppState& s, const std::vector<std::wstring>& sources,
-                               POINT pt, DWORD key_state, DWORD allowed) {
+                               POINT pt, DWORD key_state, DWORD allowed,
+                               DWORD preferred_effect) {
     s.dropRow = -1;
     s.dropPaneIndex = -1;
     s.dropHeader = false;
@@ -153,6 +156,8 @@ DWORD ResolveDropTarget(AppState& s, const std::vector<std::wstring>& sources,
     s.dropDestDir.clear();
     s.dropBadge.clear();
     s.dropBadgeMove = false;
+    if (sources.empty() || !(allowed & (DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK)))
+        return DROPEFFECT_NONE;
 
     // Esc after a spring-loaded enter: go back instead of cancelling (self drags).
     if ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) && s.springEntered) {
@@ -173,7 +178,8 @@ DWORD ResolveDropTarget(AppState& s, const std::vector<std::wstring>& sources,
     if (hit.region == ui::HitTestResult::Row && hit.index >= 0 &&
         tab->snapshot && hit.index < (int)tab->EntryCount() &&
         tab->EntryAt(hit.index).is_dir) {
-        if (tab->EntryAt(hit.index).change_record_only) return DROPEFFECT_NONE;
+        if (tab->EntryAt(hit.index).change_record_only ||
+            !tab->EntryAt(hit.index).recycle_path.empty()) return DROPEFFECT_NONE;
         std::wstring full = EntryFullPath(*tab, hit.index);
         if (full.empty()) return DROPEFFECT_NONE;
         s.dropDestDir = full;
@@ -219,6 +225,7 @@ DWORD ResolveDropTarget(AppState& s, const std::vector<std::wstring>& sources,
         return DROPEFFECT_NONE;
     } else if (hit.region == ui::HitTestResult::SidebarItem && !hit.path.empty()) {
         if (hit.path.starts_with(L"pulse:tag:")) {
+            if (!(allowed & DROPEFFECT_COPY)) return DROPEFFECT_NONE;
             s.dropDestDir = hit.path;
             s.dropSidebar = hit.index;
             destName.clear();
@@ -287,11 +294,12 @@ DWORD ResolveDropTarget(AppState& s, const std::vector<std::wstring>& sources,
         D2D1_RECT_F trayRc = s.renderer.StagingTrayRect(trayVm, rect.right, rect.bottom);
         if (pt.x >= trayRc.left && pt.x < trayRc.right &&
             pt.y >= trayRc.top && pt.y < trayRc.bottom) {
+            if (!(allowed & DROPEFFECT_COPY)) return DROPEFFECT_NONE;
             s.dropTray = true;
             s.springRow = -1;
             // Staging defaults to a copy batch; Shift stages it as a move.
             // The source is never touched here, so the OLE effect stays COPY.
-            const bool stage_move = (key_state & MK_SHIFT) != 0;
+            const bool stage_move = (key_state & MK_SHIFT) != 0 && (allowed & DROPEFFECT_MOVE) != 0;
             s.dropBadge = l10n::Get(stage_move ? l10n::StringId::DropStageMove
                                                : l10n::StringId::DropStageCopy).c_str();
             s.dropBadgeMove = stage_move;
@@ -306,7 +314,9 @@ DWORD ResolveDropTarget(AppState& s, const std::vector<std::wstring>& sources,
         return DROPEFFECT_NONE;
     }
 
-    DWORD effect = ui::ComputeDropEffect(key_state, sources.front(), s.dropDestDir, allowed);
+    DWORD effect = ui::ComputeDropEffect(key_state, sources.front(), s.dropDestDir,
+                                        allowed & (DROPEFFECT_COPY | DROPEFFECT_MOVE),
+                                        preferred_effect);
     s.dropBadge = (effect == DROPEFFECT_MOVE ? l10n::Get(l10n::StringId::DropMove).c_str() : l10n::Get(l10n::StringId::DropCopy).c_str()) + destName;
     // Say how to switch before the drop, not after (Explorer rules: Ctrl copies, Shift moves).
     if (effect == DROPEFFECT_MOVE && (allowed & DROPEFFECT_COPY))
@@ -320,13 +330,17 @@ DWORD ResolveDropTarget(AppState& s, const std::vector<std::wstring>& sources,
     return effect;
 }
 
+// Pulse's own drag-out is running (StartDragOut): its sources are never an
+// archive manager's temporary extraction (#55).
+static bool g_internal_drag = false;
+
 DWORD DropExecute(AppState& s, const std::vector<std::wstring>& sources,
-                         POINT pt, DWORD key_state, DWORD /*preferred*/) {
+                         POINT pt, DWORD key_state, DWORD allowed,
+                         DWORD preferred_effect) {
     // Resolve once more for the final position.
     // Tray drag-out is copy-only: the staged originals stay where they are.
-    const DWORD allowed = s.trayDragOut ? DWORD(DROPEFFECT_COPY)
-                                        : DWORD(DROPEFFECT_COPY | DROPEFFECT_MOVE);
-    DWORD effect = ResolveDropTarget(s, sources, pt, key_state, allowed);
+    if (s.trayDragOut) allowed &= DROPEFFECT_COPY;
+    DWORD effect = ResolveDropTarget(s, sources, pt, key_state, allowed, preferred_effect);
     std::wstring dest = s.dropDestDir;
     bool tray = s.dropTray;
     const bool header = s.dropHeader;
@@ -334,6 +348,7 @@ DWORD DropExecute(AppState& s, const std::vector<std::wstring>& sources,
     const bool pin_quick_access = s.dropQuickAccess;
     ClearDropFeedback(s);
     s.springEntered = false;
+    if (effect == DROPEFFECT_NONE || !(effect & allowed)) return DROPEFFECT_NONE;
 
     if (pin_quick_access) {
         std::vector<std::wstring> folders;
@@ -349,7 +364,7 @@ DWORD DropExecute(AppState& s, const std::vector<std::wstring>& sources,
         if (folders.empty()) return DROPEFFECT_NONE;
         s.places.SetQuickAccessPinned(folders, true);
         InvalidateRect(s.hwnd, nullptr, FALSE);
-        return DROPEFFECT_COPY;  // nothing is copied; the source keeps its files
+        return effect;  // nothing is copied; the source keeps its files
     }
 
     if (header) {
@@ -365,19 +380,21 @@ DWORD DropExecute(AppState& s, const std::vector<std::wstring>& sources,
                 else
                     InvalidateRect(s.hwnd, nullptr, FALSE);
             }
-            return DROPEFFECT_COPY;
+            return effect;
         }
         if (app::Pane* pane = PaneAtSlot(s, header_pane)) {
             if (app::Tab* tab = pane->ActiveTab()) dest = tab->current_path;
         }
         if (dest.empty() || fs::IsVirtualPath(dest)) return DROPEFFECT_NONE;
-        effect = ui::ComputeDropEffect(key_state, sources.front(), dest, allowed);
+        effect = ui::ComputeDropEffect(key_state, sources.front(), dest,
+                                       allowed & (DROPEFFECT_COPY | DROPEFFECT_MOVE),
+                                       preferred_effect);
     }
 
     if (tray) {
         std::vector<std::wstring> paths;
         for (auto& p : sources) paths.push_back(fs::NormalizePath(p));
-        const bool stage_move = (key_state & MK_SHIFT) != 0;
+        const bool stage_move = (key_state & MK_SHIFT) != 0 && (allowed & DROPEFFECT_MOVE) != 0;
         s.tray.Collect(paths, stage_move);
         ops::WriteClipboard(sources, stage_move);
         InvalidateRect(s.hwnd, nullptr, FALSE);
@@ -393,12 +410,31 @@ DWORD DropExecute(AppState& s, const std::vector<std::wstring>& sources,
         InvalidateRect(s.hwnd, nullptr, FALSE);
         return DROPEFFECT_COPY;
     }
-    if (dest.empty() || effect == DROPEFFECT_NONE || fs::IsVirtualPath(dest)) return DROPEFFECT_NONE;
+    if (dest.empty() || fs::IsVirtualPath(dest) || !(effect & allowed) ||
+        (effect != DROPEFFECT_COPY && effect != DROPEFFECT_MOVE)) return DROPEFFECT_NONE;
+
+    // Archive managers (7-Zip, WinRAR, Bandizip) drag out of a temporary
+    // folder that they delete as soon as the drop returns, while conflicts are
+    // resolved later (#55). Such items are copied unless the user or the
+    // source asks for a move, and staged before this returns.
+    const std::wstring temp_dir =
+        g_internal_drag || s.trayDragOut ? std::wstring() : app::TempDirectory();
+    const std::wstring stage_root = app::DropStageRoot();
+    const bool from_temp = !temp_dir.empty() && !sources.empty() &&
+        std::all_of(sources.begin(), sources.end(), [&](const std::wstring& p) {
+            return app::IsTemporaryDropSource(p, temp_dir, stage_root);
+        });
+    if (from_temp && effect == DROPEFFECT_MOVE && (allowed & DROPEFFECT_COPY) &&
+        (key_state & MK_SHIFT) == 0 && preferred_effect != DROPEFFECT_MOVE)
+        effect = DROPEFFECT_COPY;
+    std::vector<std::wstring> staged = sources;
+    if (!temp_dir.empty() && effect == DROPEFFECT_COPY)
+        app::StageDropSources(sources, temp_dir, stage_root, staged);
 
     ops::OpRequest req;
     req.type = (effect == DROPEFFECT_MOVE) ? ops::OpType::Move : ops::OpType::Copy;
     req.dest_dir = fs::NormalizePath(dest);
-    for (auto& p : sources) req.sources.push_back(fs::NormalizePath(p));
+    for (auto& p : staged) req.sources.push_back(fs::NormalizePath(p));
     if (!SubmitWithConflictResolution(s, std::move(req))) return DROPEFFECT_NONE;
     if (s.trayDragOut) RememberTrayDest(s, dest);
     return effect;
@@ -408,15 +444,17 @@ DWORD DropExecute(AppState& s, const std::vector<std::wstring>& sources,
 void StartDragOut(AppState& s) {
     if(DeferContentSelection(s,[](AppState& v){if(GetKeyState(VK_LBUTTON)&0x8000) StartDragOut(v);})) return;
     app::Tab* tab = ActiveTab(s);
-    if (!tab || !tab->snapshot) return;
+    if (!tab || !tab->snapshot || IsRecycleTab(tab)) return;
     std::vector<std::wstring> paths = SelectedFullPaths(*tab);
     if (paths.empty()) return;
     for (auto& path : paths) path = ClipboardPath(path);
 
     s.clickCollapseIndex = -1;
     CancelScrollAnimation(s); // DoDragDrop's modal loop coexists with on-demand render
+    g_internal_drag = true;
     DWORD effect = ui::DoFileDragDrop(paths, DROPEFFECT_COPY | DROPEFFECT_MOVE,
-        [&s] { return s.springEntered; }); // Esc = 退回 when spring-entered
+        [&s] { return s.springEntered; }, tab->current_path); // Esc = 退回 when spring-entered
+    g_internal_drag = false;
     s.springEntered = false;
     ClearDropFeedback(s);
     if (effect == DROPEFFECT_MOVE) {
@@ -602,6 +640,7 @@ void ResetSidebarGroupDrag(AppState& s) {
     s.groupGapVisible = false;
     s.groupGapLineY = 0.0f;
     s.groupDragPath.clear();
+    s.groupDragNavigate = false;
 }
 
 // ---- Quick-access pin drag: reorders the pinned folders ---------------------
@@ -1983,6 +2022,7 @@ LRESULT HandleLButtonDown(AppState* s, HWND hwnd, UINT msg, WPARAM wParam, LPARA
             hit.region != ui::HitTestResult::AddressSearchContent &&
             hit.region != ui::HitTestResult::AddressSearchOptions &&
             hit.region != ui::HitTestResult::ContentIndexManage &&
+            hit.region != ui::HitTestResult::NetworkIndexAdd &&
             hit.region != ui::HitTestResult::AddressSearchClear &&
             hit.region != ui::HitTestResult::AddressSearchClose) {
             HideAddressEditor(*s, false);
@@ -2223,14 +2263,20 @@ LRESULT HandleLButtonDown(AppState* s, HWND hwnd, UINT msg, WPARAM wParam, LPARA
             s->settings.TextRendering(hit.index);
             InvalidateRect(hwnd, nullptr, FALSE);
         } else if (hit.region == ui::HitTestResult::SettingsFolderSort ||
+                   hit.region == ui::HitTestResult::SettingsUiFontSize ||
                    hit.region == ui::HitTestResult::SettingsStartupOpen ||
                    hit.region == ui::HitTestResult::SettingsNewTabOpen ||
+                   hit.region == ui::HitTestResult::SettingsNotifyIcon ||
+                   hit.region == ui::HitTestResult::SettingsBlankClick ||
                    hit.region == ui::HitTestResult::SettingsHomeFolder) {
             // One branch on purpose: this else-if chain sits at MSVC's block
             // nesting limit (C1061), so new settings must not lengthen it.
             switch (hit.region) {
+            case ui::HitTestResult::SettingsUiFontSize: s->settings.UiFontSize(hit.index); break;
             case ui::HitTestResult::SettingsStartupOpen: s->settings.StartupOpen(hit.index); break;
             case ui::HitTestResult::SettingsNewTabOpen: s->settings.NewTabOpen(hit.index); break;
+            case ui::HitTestResult::SettingsNotifyIcon: s->settings.NotifyIcon(hit.index); break;
+            case ui::HitTestResult::SettingsBlankClick: s->settings.BlankClick(hit.index); break;
             case ui::HitTestResult::SettingsHomeFolder: s->settings.HomeFolder(hit.index); break;
             default: s->settings.FolderSort(hit.index); break;
             }
@@ -2246,7 +2292,7 @@ LRESULT HandleLButtonDown(AppState* s, HWND hwnd, UINT msg, WPARAM wParam, LPARA
             SetCapture(hwnd);
             InvalidateRect(hwnd, nullptr, FALSE);
         } else if (hit.region == ui::HitTestResult::SettingsLanguage) {
-            static constexpr const wchar_t* languages[] = {L"system", L"zh-CN", L"en-US"};
+            static constexpr const wchar_t* languages[] = {L"system", L"zh-CN", L"zh-TW", L"en-US"};
             if (hit.index >= 0 && hit.index < static_cast<int>(std::size(languages)))
                 s->settings.Language(languages[hit.index]);
         } else if (hit.region == ui::HitTestResult::SettingsWallpaper) {
@@ -2307,7 +2353,7 @@ LRESULT HandleLButtonDown(AppState* s, HWND hwnd, UINT msg, WPARAM wParam, LPARA
         } else if (hit.region == ui::HitTestResult::SettingsDupBrowse) {
             if (!s->duplicateScan.scanning) {
                 std::wstring path;
-                if (PickFolder(hwnd, path, l10n::Get(l10n::StringId::DupFolderPlaceholder).c_str())) {
+                if (PickFolder(*s, path, l10n::Get(l10n::StringId::DupFolderPlaceholder).c_str())) {
                     s->duplicateScan.folder_path = std::move(path);
                     PersistDuplicateScanPrefs(*s);
                     InvalidateRect(hwnd, nullptr, FALSE);
@@ -2606,6 +2652,9 @@ LRESULT HandleLButtonDown(AppState* s, HWND hwnd, UINT msg, WPARAM wParam, LPARA
             ShowSearchOptions(*s);
         } else if (hit.region == ui::HitTestResult::ContentIndexManage) {
             ShowSearchOptions(*s, true);
+        } else if (hit.region == ui::HitTestResult::NetworkIndexAdd) {
+            app::Pane* pane = PaneAtSlot(*s, hit.index);
+            if (app::Tab* tab = pane ? pane->ActiveTab() : nullptr) AddLiveNetworkRoot(*s, *tab);
         } else if (hit.region == ui::HitTestResult::SettingsContentIndex) {
             ShowSearchOptions(*s);
         } else if (hit.region == ui::HitTestResult::AddressSearchClear) {
@@ -2645,9 +2694,7 @@ LRESULT HandleLButtonDown(AppState* s, HWND hwnd, UINT msg, WPARAM wParam, LPARA
                 }
             }
         } else if (hit.region == ui::HitTestResult::RecentClear) {
-            if (MessageBoxW(hwnd, l10n::Get(l10n::StringId::ClearRecentPrompt).c_str(), l10n::Get(l10n::StringId::ClearRecentTitle).c_str(),
-                            MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2) == IDOK &&
-                s->places.ClearRecent()) {
+            if (ConfirmClearRecent(*s) && s->places.ClearRecent()) {
                 RefreshRecentViews(*s);
                 InvalidateRect(hwnd, nullptr, FALSE);
             }
@@ -2674,6 +2721,11 @@ LRESULT HandleLButtonDown(AppState* s, HWND hwnd, UINT msg, WPARAM wParam, LPARA
                 s->groupDragPending = true;
                 s->groupDragActive = false;
                 s->groupDragId = vm.sidebar[static_cast<size_t>(hit.index)].id;
+                // #80: the This PC title opens This PC (the empty path) on a
+                // plain click; the chevron and the rest of the header fold.
+                s->groupDragNavigate = hit.sub_index == 1 &&
+                    vm.sidebar[static_cast<size_t>(hit.index)].navigable;
+                s->groupDragPath.clear();
                 s->groupDragStartPt = POINT{ mx, my };
                 s->groupDragToIndex = -1;
                 s->groupGapVisible = false;
@@ -2786,7 +2838,7 @@ LRESULT HandleLButtonDown(AppState* s, HWND hwnd, UINT msg, WPARAM wParam, LPARA
             s->marqueeActive = false;
             s->marqueeAdditive = ctrl;
             s->blankClickPane = s->pane;
-            s->blankClickTab = s->appPrefs.blank_click_go_back && tab &&
+            s->blankClickTab = s->appPrefs.blank_click_action != app::kBlankClickOff && tab &&
                 !IsAddressSearchResults(tab) && !ctrl && PointInList(*s, mx, my) &&
                 (GetKeyState(VK_SHIFT) & 0x8000) == 0 &&
                 (GetKeyState(VK_MENU) & 0x8000) == 0 ? tab : nullptr;
@@ -2924,6 +2976,7 @@ LRESULT HandleLButtonUp(AppState* s, HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
             if (s->groupDragPending || s->groupDragActive) {
                 const bool was_active = s->groupDragActive;
                 const std::wstring path = s->groupDragPath;
+                const bool navigate = s->groupDragNavigate;
                 const int section = s->groupDragId;
                 if (was_active) CommitSidebarGroupDrag(*s);
                 ResetSidebarGroupDrag(*s);
@@ -2931,7 +2984,7 @@ LRESULT HandleLButtonUp(AppState* s, HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
                 if (!was_active) {
                     // A row of a header-less section navigates on release; a
                     // header folds its section (masks are keyed by id).
-                    if (!path.empty()) NavigateTo(*s, path);
+                    if (navigate || !path.empty()) NavigateTo(*s, path);
                     else if (section >= 0) s->sidebarCollapsedMask ^= 1u << section;
                 }
                 InvalidateRect(hwnd, nullptr, FALSE);
@@ -3170,7 +3223,7 @@ LRESULT HandleLButtonUp(AppState* s, HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
                 click.drag_width = GetSystemMetrics(SM_CXDRAG);
                 click.drag_height = GetSystemMetrics(SM_CYDRAG);
                 click.blank_list_hit = PointInList(*s, mx, my);
-                bool goBack = s->appPrefs.blank_click_go_back &&
+                bool goBack = s->appPrefs.blank_click_action != app::kBlankClickOff &&
                     !IsAddressSearchResults(tab) && app::IsBlankPaneBackClick(click);
                 if (goBack) {
                     const ui::WindowViewModel vm = BuildVm(*s, false);
@@ -3194,13 +3247,12 @@ LRESULT HandleLButtonUp(AppState* s, HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
                 if (s->marqueeActive) ApplyMarqueeSelection(*s);
                 ResetMarquee(*s);
                 if (goBack) {
-                    if (tab->CanGoBack()) {
+                    if (app::BlankClickGoesBack(s->appPrefs.blank_click_action, tab->CanGoBack())) {
                         GoBack(*s);
                     } else if (!fs::IsVirtualPath(tab->current_path)) {
-                        const std::wstring current = fs::NormalizePath(tab->current_path);
-                        const std::wstring parent = fs::ParentPath(current);
-                        if (!parent.empty() && _wcsicmp(parent.c_str(), current.c_str()) != 0)
-                            GoUp(*s);
+                        // Same as the Up button: a drive or share root goes on
+                        // to This PC, where it stops (#68).
+                        GoUp(*s);
                     }
                 }
             } else if (s->clickCollapseIndex >= 0) {
@@ -3444,6 +3496,11 @@ LRESULT HandleRButtonUp(AppState* s, HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
             ShowWorkspaceMenu(*s, _wtoi(rest.c_str()), sp);
             shown = true;
         } else if (HandleVerticalTabContextMenu(*s, hit, sp)) {
+            shown = true;
+        } else if (hit.region == ui::HitTestResult::SidebarItem &&
+                   hit.sidebar_section == static_cast<int>(app::SidebarSectionId::Cloud)) {
+            // OneDrive has no header to right-click (#80): its rows carry the menu.
+            ShowCloudPlaceMenu(*s, hit.path, sp);
             shown = true;
         } else if (hit.region == ui::HitTestResult::SidebarItem) {
             if (s->places.IsQuickAccessPinned(hit.path)) {

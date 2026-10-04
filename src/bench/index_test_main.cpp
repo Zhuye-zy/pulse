@@ -6,7 +6,10 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <mutex>
 
 using namespace pulse::index;
 
@@ -162,7 +165,101 @@ void RunNetworkIntegration(const std::wstring& root) {
     if (!config_existed) DeleteFileW(config_path.c_str());
 }
 
+// #74: scoped name search in a network folder no ready root covers.
+void RunLiveNetworkTests() {
+    Check(IsNetworkFolderPath(L"\\\\192.168.1.5\\Video") &&
+          IsNetworkFolderPath(L"\\\\?\\UNC\\srv\\share\\a") &&
+          !IsNetworkFolderPath(L"C:\\Windows") && !IsNetworkFolderPath(L"\\\\?\\C:\\Windows") &&
+          !IsNetworkFolderPath(L""),
+          L"live network: UNC paths are network folders, local paths are not");
+
+    NetworkRootInfo ready;
+    ready.path = L"\\\\srv\\share";
+    ready.online = true;
+    ready.indexed_items = 10;
+    NetworkRootInfo crawling = ready;
+    crawling.path = L"\\\\srv\\new";
+    crawling.building = true;
+    const std::vector<NetworkRootInfo> roots{ready, crawling};
+    Check(NetworkRootsCover(roots, L"\\\\SRV\\share\\Movies\\", true) &&
+          !NetworkRootsCover(roots, L"\\\\srv\\shared", true) &&
+          !NetworkRootsCover(roots, L"\\\\srv\\other", false),
+          L"live network: a ready root covers its subtree only");
+    Check(!NetworkRootsCover(roots, L"\\\\srv\\new\\a", true) &&
+          NetworkRootsCover(roots, L"\\\\srv\\new\\a", false),
+          L"live network: a root on its first crawl is configured but not ready");
+
+    wchar_t temp[MAX_PATH]{};
+    GetTempPathW(MAX_PATH, temp);
+    const std::filesystem::path dir = std::filesystem::path(temp) /
+        (L"pulse_live_net_" + std::to_wstring(GetCurrentProcessId()));
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    std::filesystem::create_directories(dir / L"sub" / L"LanChat Notes", ec);
+    std::filesystem::create_directories(dir / L"sub" / L"deep", ec);
+    for (const auto& file : {dir / L"lanchat.exe", dir / L"lanchat-aarch64.apk", dir / L"notes.txt",
+                             dir / L"sub" / L"deep" / L"lanchat.log"})
+        std::ofstream(file) << "x";
+
+    auto walk = [](const std::wstring& folder, const std::wstring& needle, bool folders_only,
+                   bool cancel = false) {
+        LiveNetworkMatches matches;
+        std::mutex mutex;
+        LiveNetworkWalk(folder, needle, folders_only, matches, mutex,
+                        [cancel] { return cancel; }, [] {});
+        return matches;
+    };
+    const auto all = walk(dir.wstring(), L"lanchat", false);
+    Check(all.complete && all.error == 0 && all.total == 4 && all.hits.size() == 4,
+          L"live network: walk finds matches in every subfolder, case-insensitive");
+    const auto folders = walk(dir.wstring() + L"\\", L"lanchat", true);
+    Check(folders.total == 1 && folders.hits.size() == 1 && folders.hits[0].is_dir &&
+          folders.hits[0].name == L"LanChat Notes",
+          L"live network: folders-only keeps the matching folder");
+    const auto notes = walk(dir.wstring(), L"notes", false);
+    Check(notes.total == 2, L"live network: a second needle matches file and folder names");
+
+    Query page;
+    page.needle = L"lanchat";
+    page.rank = false;
+    page.sort = ResultSort::Name;
+    page.offset = 1;
+    page.limit = 2;
+    const auto selected = SelectLiveNetworkHits(page, all);
+    Check(selected.total == 4 && selected.hits.size() == 2 &&
+          selected.hits[0].name == L"lanchat-aarch64.apk" && selected.hits[1].name == L"lanchat.exe",
+          L"live network: pages are ordered by name with offset and limit");
+    page.sort_desc = true;
+    page.offset = 0;
+    page.limit = 1;
+    const auto desc = SelectLiveNetworkHits(page, all);
+    Check(desc.hits.size() == 1 && desc.hits[0].name == L"lanchat.log",
+          L"live network: descending name order");
+
+    const auto cancelled = walk(dir.wstring(), L"lanchat", false, true);
+    Check(!cancelled.complete && cancelled.total == 0, L"live network: a cancelled walk stops");
+    const auto missing = walk((dir / L"missing").wstring(), L"lanchat", false);
+    Check(missing.complete && missing.error != 0 && missing.total == 0,
+          L"live network: an unreadable scope reports its error");
+
+    // Same tree over the loopback admin share when this account can reach it.
+    const std::wstring local = dir.wstring();
+    if (local.size() > 2 && local[1] == L':') {
+        const std::wstring unc = L"\\\\127.0.0.1\\" + std::wstring(1, local[0]) + L"$" + local.substr(2);
+        if (GetFileAttributesW(unc.c_str()) != INVALID_FILE_ATTRIBUTES) {
+            const auto smb = walk(unc, L"lanchat", false);
+            Check(IsNetworkFolderPath(unc) && smb.complete && smb.total == 4 &&
+                  smb.hits[0].path.rfind(L"\\\\127.0.0.1\\", 0) == 0,
+                  L"live network: walk over a loopback SMB share");
+        } else {
+            std::wcout << L"[SKIP] live network: loopback admin share not reachable\n";
+        }
+    }
+    std::filesystem::remove_all(dir, ec);
+}
+
 int wmain(int argc, wchar_t** argv) {
+    RunLiveNetworkTests();
     Check(NormalizeVolumeId(L"  \\\\?\\Volume{abc}\\  ") == L"\\\\?\\VOLUME{ABC}\\",
           L"volume id normalization");
 

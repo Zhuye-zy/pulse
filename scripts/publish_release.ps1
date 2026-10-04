@@ -24,7 +24,8 @@ try {
 } finally {
     Remove-Item -LiteralPath $keyPath -ErrorAction SilentlyContinue
 }
-# A portable archive may be staged locally or uploaded to the draft before tagging.
+# CI packages the portable archive with the normal channel; a ZIP uploaded to the
+# release draft before tagging is still accepted as a fallback.
 if (-not (Test-Path -LiteralPath "dist/$portable")) {
     & gh release download $tag --repo $repository --pattern $portable --dir dist
     if ($LASTEXITCODE -ne 0) { throw 'Upload the portable ZIP to the release draft before publishing' }
@@ -55,7 +56,7 @@ $changes
 
 ## 客户端更新
 
-Pulse 启动后会自动检查新版；点击更新提示或「设置 → 关于与诊断 → 下载安装」即可下载、校验并启动安装程序。安装时按 Windows 提示确认管理员权限。
+Pulse 启动后会自动检查新版。从 1.0.51 起，点击更新提示或「设置 → 关于与诊断 → 更新并重启」即可自动下载、校验，等待任务完成后保存工作现场、静默安装并恢复原标签。Windows 必要的管理员确认仍需由你确认；旧版客户端升级到本版时仍使用旧版更新入口。
 
 使用 1.0.2 或更早版本的用户，请先从上方链接手动安装一次。自 1.0.3 起，普通版和 Windows 8.1 版分别接收适用的更新。
 

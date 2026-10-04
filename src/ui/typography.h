@@ -42,6 +42,13 @@ TextRenderMode CurrentTextRenderMode() noexcept;
 // Auto draws with LumaText; Sharp and Smooth use DirectWrite directly.
 inline bool UseLumaTextForUi() noexcept { return CurrentTextRenderMode() == TextRenderMode::Auto; }
 
+// Process-wide UI font size (Settings > Interface font size), in percent of the
+// built-in sizes: 90, 100, 112 or 125. Applies to every role except Icon, so
+// glyph icons keep their slots. Callers recreate cached formats after a change.
+void SetUiFontScale(int percent) noexcept;
+int UiFontScalePercent() noexcept;
+float UiFontScale() noexcept;
+
 // Invalidate language-dependent fallback and measurement caches.
 void InvalidateCaches();
 std::uint64_t Generation() noexcept;

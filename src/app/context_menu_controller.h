@@ -52,9 +52,15 @@ public:
     bool RequestStaticPrefetch(const std::wstring& extension);
     void MergeStaticCache(
         std::unordered_map<std::wstring, std::vector<StaticVerb>> entries);
+    // `generation` is cache_generation() when the enumeration started; results
+    // that predate InvalidateCaches() are dropped.
     bool CompleteStaticVerbs(const std::wstring& extension,
-                             std::vector<StaticVerb> verbs);
+                             std::vector<StaticVerb> verbs, uint32_t generation);
     void InvalidateCaches();
+    uint32_t cache_generation() const { return cache_generation_; }
+    bool HasCachedStaticVerbs(const std::wstring& extension) const {
+        return static_cache_.contains(extension);
+    }
 
     bool SeedComItemsFromCache();
     QueryCompletion CompleteComQuery(uint32_t token,
@@ -97,6 +103,7 @@ private:
     std::unordered_set<std::wstring> static_seeded_;
     std::unordered_map<std::wstring, std::vector<ops::ShellMenuItem>> com_cache_;
     std::unordered_set<std::wstring> static_pending_;
+    uint32_t cache_generation_ = 0;  // bumped by InvalidateCaches()
     uint64_t query_started_at_ = 0;
     uint64_t refresh_at_ = 0;
     uint64_t refresh_again_at_ = 0;

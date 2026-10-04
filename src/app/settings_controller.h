@@ -31,6 +31,7 @@ enum class SettingsEffect : uint32_t {
     ListStyle = 1u << 10,
     FolderSort = 1u << 11,
     TextRendering = 1u << 12,
+    UiFontSize = 1u << 13,
 };
 
 constexpr SettingsEffect operator|(SettingsEffect left, SettingsEffect right) noexcept {
@@ -90,6 +91,8 @@ public:
         std::function<bool(std::wstring&, std::wstring_view)> pick_folder;
         std::function<void(SettingsEffect)> apply_effects;
         std::function<void(const std::wstring&)> show_error;
+        std::function<void()> integration_changing;
+        std::function<void()> integration_changed;
         SettingsTaskCompletion task_completion;
         std::function<void(const std::wstring&)> open_path;
         std::function<void()> open_diagnostics;
@@ -139,12 +142,15 @@ public:
     // Optional Details columns (ui/details_column_set.h bits), every folder.
     void DetailsColumns(uint32_t mask);
     void StartupOpen(int index);
+    void NotifyIcon(int index);
     void NewTabOpen(int index);
+    void BlankClick(int index);   // 0 nothing, 1 back, 2 up
     // 0 picks the default location's folder, 1 resets it to This PC.
     void HomeFolder(int action);
     void TextRendering(int index);
+    void UiFontSize(int index);   // 0 small 90%, 1 default 100%, 2 large 112%, 3 larger 125%
     void TrayIconSize(int index);
-    // Settings sliders: 0 interface transparency (0..100), 1 wallpaper blur (0..40).
+    // Settings sliders: 0 interface transparency (0..90), 1 wallpaper blur (0..40).
     // Values apply live while dragging; EndSlider saves once.
     void BeginSlider(int which) noexcept { slider_drag_ = which; }
     int slider_drag() const noexcept { return slider_drag_; }
@@ -153,6 +159,11 @@ public:
     void Language(std::wstring_view language_id);
     void Wallpaper(int action);
     void ToggleUi(int index);
+    void IntegrationAction(int index);
+    int IntegrationState() const noexcept;
+    std::wstring IntegrationSummary() const;
+    bool IntegrationCanRestore() const noexcept;
+    bool IntegrationCanRetry() const noexcept { return !integration_error_.empty() || integration_save_failed_; }
     void BeginGlobalSearchHotkeyCapture() noexcept { global_search_capturing_ = true; }
     void CancelGlobalSearchHotkeyCapture() noexcept { global_search_capturing_ = false; }
     bool CaptureGlobalSearchHotkey(uint32_t key, uint32_t modifiers);
@@ -191,6 +202,8 @@ private:
     std::vector<std::thread> workers_;
     bool stopping_ = false;
     std::wstring error_;
+    std::wstring integration_error_;
+    bool integration_save_failed_ = false;
     bool service_installed_ = false;
     AppPrefs* prefs_ = nullptr;
     ContextMenuPrefs* context_ = nullptr;

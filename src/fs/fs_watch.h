@@ -30,31 +30,15 @@ public:
 
     bool Start(const std::wstring& path, ChangeCallback cb, bool subtree = false);
     void Stop();
-    bool Armed() const {
-        return hDir_.load(std::memory_order_acquire) != INVALID_HANDLE_VALUE;
-    }
+    bool Armed() const;
     const std::wstring& path() const { return path_; }
 
 private:
-    static HANDLE OpenDirectory(const std::wstring& path);
-    static bool ReadIdentity(HANDLE handle, BY_HANDLE_FILE_INFORMATION& identity);
-    bool WatchedPathReplaced() const;
-    bool ReopenDirectory();
-    void Notify(bool overflow, std::vector<DirNotifyEvent> events) const;
-    void WorkerThread();
-
+    struct State;
+    std::shared_ptr<State> state_;
     std::wstring path_;
-    bool subtree_ = false;
-    ChangeCallback callback_;
-    std::atomic<HANDLE> hDir_{INVALID_HANDLE_VALUE};
-    HANDLE hStop_ = nullptr;
-    std::atomic<bool> running_{false};
     std::thread thread_;
-    OVERLAPPED overlapped_{};
-    BY_HANDLE_FILE_INFORMATION identity_{};
-    bool identity_valid_ = false;
-    std::wstring pending_rename_old_;
-    DWORD buffer_[64 * 1024 / sizeof(DWORD)]{};
+
 };
 
 class DirWatchSet {

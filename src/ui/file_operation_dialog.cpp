@@ -7,6 +7,7 @@
 #include "window_helpers.h"
 
 #include <windowsx.h>
+#include <commctrl.h>
 #include <algorithm>
 #include <cmath>
 #include <deque>
@@ -17,8 +18,6 @@ namespace {
 
 constexpr wchar_t kTransferClass[] = L"PulseFileOperationWindow";
 constexpr wchar_t kConflictClass[] = L"PulseFileConflictWindow";
-constexpr wchar_t kConfirmClass[] = L"PulseConfirmWindow";
-constexpr float kConfirmMinW = 380.0f;
 constexpr UINT_PTR kRenderTimer = 1;
 constexpr float kDlgW = 460.0f;
 constexpr float kTitleH = 36.0f;
@@ -108,27 +107,6 @@ void DrawEllipsizedText(Compositor& compositor, IDWriteTextFormat* format,
     if (FAILED(dc->CreateSolidColorBrush(color, &brush))) return;
     dc->DrawTextLayout(D2D1::Point2F(bounds.left, bounds.top), layout.get(), brush.get(),
                        D2D1_DRAW_TEXT_OPTIONS_CLIP);
-}
-
-void DrawWrappedText(Compositor& compositor, IDWriteTextFormat* format,
-                     const D2D1_RECT_F& bounds, const std::wstring& text,
-                     const D2D1_COLOR_F& color) {
-    auto* factory = compositor.DwriteFactory();
-    auto* dc = compositor.Dc();
-    if (!factory || !dc || !format || text.empty()) return;
-    const float width = bounds.right - bounds.left;
-    const float height = bounds.bottom - bounds.top;
-    if (width <= 0.0f || height <= 0.0f) return;
-    ComPtr<IDWriteTextLayout> layout;
-    if (FAILED(factory->CreateTextLayout(text.c_str(), static_cast<UINT32>(text.size()),
-                                         format, width, height, &layout)) || !layout.get())
-        return;
-    layout->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
-    layout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
-    layout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
-    ComPtr<ID2D1SolidColorBrush> brush;
-    if (FAILED(dc->CreateSolidColorBrush(color, &brush)) || !brush.get()) return;
-    dc->DrawTextLayout(D2D1::Point2F(bounds.left, bounds.top), layout.get(), brush.get());
 }
 
 void DrawSpeedGraph(ID2D1DeviceContext* dc, const D2D1_RECT_F& plot,
@@ -425,6 +403,9 @@ private:
             painter_.DrawText(conflict_.destination, Rect(scale_, 252, top + 55, 196, 38),
                               compositor_.SmallFormat(), theme.text_secondary);
         }
+        // The paths are cut to their boxes; hovering one shows it whole (#55).
+        SetPathTip(1, details_ ? Rect(scale_, 32, 326.0f + 55, 198, 38) : D2D1_RECT_F{});
+        SetPathTip(2, details_ ? Rect(scale_, 252, 326.0f + 55, 196, 38) : D2D1_RECT_F{});
         pulse::ui::EndSurface(compositor_);
     }
 
@@ -437,6 +418,7 @@ private:
             compositor_.RecreateTextFormats(scale_);
             painter_.SetCompositor(&compositor_);
             painter_.SetScale(scale_);
+            CreatePathTips();
             return 0;
         case WM_NCCALCSIZE:
             return 0;
@@ -546,8 +528,39 @@ private:
         return DefWindowProcW(hwnd_, message, wparam, lparam);
     }
 
+    void CreatePathTips() {
+        INITCOMMONCONTROLSEX controls{ sizeof(controls), ICC_BAR_CLASSES };
+        InitCommonControlsEx(&controls);
+        tooltip_ = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
+            WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+            hwnd_, nullptr, GetModuleHandleW(nullptr), nullptr);
+        if (!tooltip_) return;
+        SendMessageW(tooltip_, TTM_SETMAXTIPWIDTH, 0, static_cast<LPARAM>(560 * scale_));
+        for (UINT id : { 1u, 2u }) {
+            TOOLINFOW info{ sizeof(info) };
+            info.uFlags = TTF_SUBCLASS;
+            info.hwnd = hwnd_;
+            info.uId = id;
+            info.lpszText = const_cast<wchar_t*>(
+                (id == 1 ? conflict_.source : conflict_.destination).c_str());
+            SendMessageW(tooltip_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&info));
+        }
+    }
+
+    void SetPathTip(UINT id, const D2D1_RECT_F& box) {
+        if (!tooltip_) return;
+        TOOLINFOW info{ sizeof(info) };
+        info.hwnd = hwnd_;
+        info.uId = id;
+        info.rect = { static_cast<LONG>(std::floor(box.left)), static_cast<LONG>(std::floor(box.top)),
+                      static_cast<LONG>(std::ceil(box.right)), static_cast<LONG>(std::ceil(box.bottom)) };
+        SendMessageW(tooltip_, TTM_NEWTOOLRECTW, 0, reinterpret_cast<LPARAM>(&info));
+    }
+
     HWND hwnd_ = nullptr;
     HWND owner_ = nullptr;
+    HWND tooltip_ = nullptr;
     Compositor compositor_;
     fluent::Painter painter_;
     ops::ConflictItemInfo conflict_;
@@ -562,310 +575,6 @@ private:
     int hover_ = 0;
     int pressed_ = 0;
     int focus_ = 0;
-};
-
-class ConfirmWindow {
-public:
-    bool Show(HWND owner, const ConfirmDialogSpec& spec, bool dark, D2D1_COLOR_F accent) {
-        owner_ = owner;
-        spec_ = spec;
-        spec_.message = path::FriendlyPathText(spec_.message);
-        if (spec_.confirm_text.empty()) spec_.confirm_text = pulse::l10n::Get(pulse::l10n::StringId::ConfirmDefault);
-        if (spec_.cancel_text.empty()) spec_.cancel_text = pulse::l10n::Get(pulse::l10n::StringId::Cancel);
-        dark_ = dark;
-        accent_ = accent;
-        accepted_ = false;
-        scale_ = static_cast<float>(pulse::compat::WindowDpi(owner ? owner : GetDesktopWindow())) / 96.0f;
-
-        WNDCLASSEXW wc{ sizeof(wc) };
-        wc.hInstance = GetModuleHandleW(nullptr);
-        wc.lpfnWndProc = WndProc;
-        wc.lpszClassName = kConfirmClass;
-        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-        wc.hbrBackground = nullptr;
-        if (!GetClassInfoExW(wc.hInstance, kConfirmClass, &wc)) RegisterClassExW(&wc);
-
-        const int width = static_cast<int>(kConfirmMinW * scale_);
-        const int height = static_cast<int>(188.0f * scale_);
-        hwnd_ = CreateWindowExW(WS_EX_NOREDIRECTIONBITMAP, kConfirmClass,
-            spec_.title.c_str(), WS_POPUP | WS_THICKFRAME | WS_SYSMENU,
-            CW_USEDEFAULT, CW_USEDEFAULT, width, height, owner, nullptr,
-            wc.hInstance, this);
-        if (!hwnd_) return false;
-        RECT placed{};
-        GetWindowRect(hwnd_, &placed);
-        pulse::ui::CenterOwnedWindow(hwnd_, owner_, placed.right - placed.left,
-                          placed.bottom - placed.top);
-        if (owner_) EnableWindow(owner_, FALSE);
-        ShowWindow(hwnd_, SW_SHOW);
-        SetForegroundWindow(hwnd_);
-
-        MSG message{};
-        while (!done_ && GetMessageW(&message, nullptr, 0, 0) > 0) {
-            TranslateMessage(&message);
-            DispatchMessageW(&message);
-        }
-        if (IsWindow(hwnd_)) { HideComposedDialog(hwnd_, owner_); DestroyWindow(hwnd_); }
-        hwnd_ = nullptr;
-        if (owner_) {
-            EnableWindow(owner_, TRUE);
-        }
-        return accepted_;
-    }
-
-private:
-    static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
-        auto* self = reinterpret_cast<ConfirmWindow*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
-        if (message == WM_NCCREATE) {
-            const auto* create = reinterpret_cast<CREATESTRUCTW*>(lparam);
-            self = static_cast<ConfirmWindow*>(create->lpCreateParams);
-            SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
-            self->hwnd_ = hwnd;
-        }
-        return self ? self->Handle(message, wparam, lparam)
-                    : DefWindowProcW(hwnd, message, wparam, lparam);
-    }
-
-    D2D1_RECT_F CloseRect() const { return close_rc_; }
-    D2D1_RECT_F CancelRect() const { return cancel_rc_; }
-    D2D1_RECT_F ConfirmRect() const { return confirm_rc_; }
-
-    void LayoutFromSize(float width, float height) {
-        const float pad = ScaleDip(scale_, 20.0f);
-        const float title_h = ScaleDip(scale_, 36.0f);
-        const float close_w = ScaleDip(scale_, 46.0f);
-        const float gap = ScaleDip(scale_, 8.0f);
-        const float btn_h = painter_.MeasureButtonHeight();
-        close_rc_ = D2D1::RectF(width - close_w, 0, width, title_h);
-        const float cancel_w = painter_.MeasureButtonWidth(spec_.cancel_text);
-        const float confirm_w = painter_.MeasureButtonWidth(spec_.confirm_text);
-        const float y1 = height - ScaleDip(scale_, 10.0f);
-        const float y0 = y1 - btn_h;
-        confirm_rc_ = D2D1::RectF(width - pad - confirm_w, y0, width - pad, y1);
-        cancel_rc_ = D2D1::RectF(confirm_rc_.left - gap - cancel_w, y0,
-                                 confirm_rc_.left - gap, y1);
-        const float msg_top = title_h + ScaleDip(scale_, 16.0f);
-        message_rc_ = D2D1::RectF(pad, msg_top, width - pad, y0 - ScaleDip(scale_, 12.0f));
-        divider_top_ = title_h;
-        divider_footer_ = y0 - ScaleDip(scale_, 12.0f);
-        dip_w_ = width / std::max(scale_, 0.001f);
-    }
-
-    void SizeToContent() {
-        if (!hwnd_ || !compositor_.DwriteFactory()) return;
-        const float pad = ScaleDip(scale_, 20.0f);
-        const float title_h = ScaleDip(scale_, 36.0f);
-        const float gap = ScaleDip(scale_, 8.0f);
-        const float btn_h = painter_.MeasureButtonHeight();
-        const float footer_h = btn_h + ScaleDip(scale_, 20.0f);
-        const float cancel_w = painter_.MeasureButtonWidth(spec_.cancel_text);
-        const float confirm_w = painter_.MeasureButtonWidth(spec_.confirm_text);
-        float width = std::max(ScaleDip(scale_, kConfirmMinW),
-                               pad + cancel_w + gap + confirm_w + pad);
-        const float wrap = width - pad * 2.0f;
-        float msg_h = typography::MeasureWrapped(compositor_.DwriteFactory(),
-                                                 compositor_.TextFormat(),
-                                                 spec_.message, wrap);
-        msg_h = std::max(msg_h, ScaleDip(scale_, 22.0f));
-        const float height = title_h + ScaleDip(scale_, 16.0f) + msg_h
-                           + ScaleDip(scale_, 16.0f) + footer_h;
-        SetWindowPos(hwnd_, nullptr, 0, 0,
-                     static_cast<int>(std::ceil(width)),
-                     static_cast<int>(std::ceil(height)),
-                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER);
-        compositor_.Resize(static_cast<int>(std::ceil(width)),
-                           static_cast<int>(std::ceil(height)));
-        LayoutFromSize(width, height);
-    }
-
-    int Hit(float x, float y) const {
-        if (pulse::ui::ContainsRect(CloseRect(), x, y)) return 3;
-        if (pulse::ui::ContainsRect(ConfirmRect(), x, y)) return 1;
-        if (pulse::ui::ContainsRect(CancelRect(), x, y)) return 2;
-        return 0;
-    }
-
-    void Complete(bool accepted) {
-        accepted_ = accepted;
-        done_ = true;
-        if (hwnd_) { HideComposedDialog(hwnd_, owner_); DestroyWindow(hwnd_); }
-    }
-
-    void Render() {
-        if (compositor_.NeedsRecovery()) {
-            if (!compositor_.Recover()) return;
-            compositor_.RecreateTextFormats(scale_);
-            painter_.SetCompositor(&compositor_);
-            painter_.SetScale(scale_);
-        }
-        if (!compositor_.Dc()) return;
-        const bool high_contrast = IsHighContrast();
-        const Theme theme = high_contrast ? MakeHighContrastTheme() : MakeTheme(dark_, accent_);
-        pulse::ui::BeginSurface(compositor_, painter_, theme, dark_, high_contrast, backdrop_enabled_,
-                     scale_);
-
-        const D2D1_COLOR_F warning = dark_ ? HexColor(0xF7D154) : HexColor(0x8A5500);
-        painter_.DrawGlyph(L"\xE7BA", Rect(scale_, 14, 8, 22, 22), warning);
-        painter_.DrawText(spec_.title, D2D1::RectF(ScaleDip(scale_, 42.0f), 0,
-                                                  close_rc_.left - ScaleDip(scale_, 8.0f),
-                                                  ScaleDip(scale_, 36.0f)),
-                          compositor_.SmallFormat(), theme.text);
-        fluent::ControlState close_state{};
-        close_state.hovered = hover_ == 3;
-        close_state.pressed = pressed_ == 3;
-        painter_.DrawTitleBarButton(CloseRect(), fluent::TitleBarButtonRole::Close,
-                                    {}, close_state);
-        painter_.FillRoundedRect(D2D1::RectF(0, divider_top_,
-                                             ScaleDip(scale_, dip_w_), divider_top_ + 1.0f),
-                                 0, theme.stroke_divider);
-
-        DrawWrappedText(compositor_, compositor_.TextFormat(), message_rc_,
-                        spec_.message, theme.text);
-
-        painter_.FillRoundedRect(D2D1::RectF(0, divider_footer_,
-                                             ScaleDip(scale_, dip_w_), divider_footer_ + 1.0f),
-                                 0, theme.stroke_divider);
-
-        fluent::ControlState cancel_state{};
-        cancel_state.hovered = hover_ == 2;
-        cancel_state.pressed = pressed_ == 2;
-        cancel_state.keyboard_focus = focus_ == 1;
-        painter_.DrawButton({ CancelRect(), spec_.cancel_text, {},
-                              fluent::ButtonKind::Transparent, cancel_state });
-
-        fluent::ControlState confirm_state{};
-        confirm_state.hovered = hover_ == 1;
-        confirm_state.pressed = pressed_ == 1;
-        confirm_state.keyboard_focus = focus_ == 0;
-        painter_.DrawButton({ ConfirmRect(), spec_.confirm_text, {},
-                              spec_.danger ? fluent::ButtonKind::Danger
-                                           : fluent::ButtonKind::Primary,
-                              confirm_state });
-
-        pulse::ui::EndSurface(compositor_);
-    }
-
-    LRESULT Handle(UINT message, WPARAM wparam, LPARAM lparam) {
-        switch (message) {
-        case WM_CREATE:
-            scale_ = static_cast<float>(pulse::compat::WindowDpi(hwnd_)) / 96.0f;
-            backdrop_enabled_ = pulse::ui::ApplyBackdrop(hwnd_, dark_);
-            if (!compositor_.Init(hwnd_)) return -1;
-            compositor_.RecreateTextFormats(scale_);
-            painter_.SetCompositor(&compositor_);
-            painter_.SetScale(scale_);
-            SizeToContent();
-            return 0;
-        case WM_NCCALCSIZE:
-            return 0;
-        case WM_NCHITTEST:
-            return pulse::ui::BorderlessHitTest(hwnd_, lparam, 36 * scale_, CloseRect());
-        case WM_SIZE:
-            if (compositor_.Dc()) compositor_.Resize(LOWORD(lparam), HIWORD(lparam));
-            LayoutFromSize(static_cast<float>(LOWORD(lparam)),
-                           static_cast<float>(HIWORD(lparam)));
-            InvalidateRect(hwnd_, nullptr, FALSE);
-            return 0;
-        case WM_MOVE:
-            compositor_.UpdateTextRenderingParams(
-                MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST));
-            return 0;
-        case WM_DPICHANGED: {
-            scale_ = HIWORD(wparam) / 96.0f;
-            compositor_.RecreateTextFormats(scale_);
-            painter_.SetScale(scale_);
-            const auto* suggested = reinterpret_cast<RECT*>(lparam);
-            if (suggested) {
-                SetWindowPos(hwnd_, nullptr, suggested->left, suggested->top, 0, 0,
-                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER);
-            }
-            SizeToContent();
-            return 0;
-        }
-        case WM_MOUSEMOVE: {
-            const int next = Hit(static_cast<float>(GET_X_LPARAM(lparam)),
-                                 static_cast<float>(GET_Y_LPARAM(lparam)));
-            if (next != hover_) { hover_ = next; InvalidateRect(hwnd_, nullptr, FALSE); }
-            TRACKMOUSEEVENT track{ sizeof(track), TME_LEAVE, hwnd_, 0 };
-            TrackMouseEvent(&track);
-            return 0;
-        }
-        case WM_MOUSELEAVE:
-            hover_ = 0;
-            InvalidateRect(hwnd_, nullptr, FALSE);
-            return 0;
-        case WM_LBUTTONDOWN:
-            pressed_ = Hit(static_cast<float>(GET_X_LPARAM(lparam)),
-                           static_cast<float>(GET_Y_LPARAM(lparam)));
-            SetCapture(hwnd_);
-            InvalidateRect(hwnd_, nullptr, FALSE);
-            return 0;
-        case WM_LBUTTONUP: {
-            const int hit = Hit(static_cast<float>(GET_X_LPARAM(lparam)),
-                                static_cast<float>(GET_Y_LPARAM(lparam)));
-            const int pressed = pressed_;
-            pressed_ = 0;
-            ReleaseCapture();
-            if (hit == pressed) {
-                if (hit == 1) Complete(true);
-                else if (hit == 2 || hit == 3) Complete(false);
-            }
-            InvalidateRect(hwnd_, nullptr, FALSE);
-            return 0;
-        }
-        case WM_KEYDOWN:
-            if (wparam == VK_ESCAPE) { Complete(false); return 0; }
-            if (wparam == VK_TAB) {
-                focus_ = focus_ == 0 ? 1 : 0;
-                InvalidateRect(hwnd_, nullptr, FALSE);
-                return 0;
-            }
-            if (wparam == VK_RETURN || wparam == VK_SPACE) {
-                Complete(focus_ == 0);
-                return 0;
-            }
-            break;
-        case WM_CLOSE:
-            Complete(false);
-            return 0;
-        case WM_PAINT: {
-            PAINTSTRUCT paint{};
-            BeginPaint(hwnd_, &paint);
-            Render();
-            EndPaint(hwnd_, &paint);
-            return 0;
-        }
-        case WM_ERASEBKGND:
-            return 1;
-        case WM_DESTROY:
-            compositor_.Shutdown();
-            done_ = true;
-            return 0;
-        }
-        return DefWindowProcW(hwnd_, message, wparam, lparam);
-    }
-
-    HWND hwnd_ = nullptr;
-    HWND owner_ = nullptr;
-    Compositor compositor_;
-    fluent::Painter painter_;
-    ConfirmDialogSpec spec_;
-    D2D1_COLOR_F accent_ = HexColor(0x0078D4);
-    float scale_ = 1.0f;
-    bool dark_ = false;
-    bool backdrop_enabled_ = false;
-    bool accepted_ = false;
-    bool done_ = false;
-    int hover_ = 0;
-    int pressed_ = 0;
-    int focus_ = 0;
-    D2D1_RECT_F close_rc_{};
-    D2D1_RECT_F cancel_rc_{};
-    D2D1_RECT_F confirm_rc_{};
-    D2D1_RECT_F message_rc_{};
-    float dip_w_ = kConfirmMinW;
-    float divider_top_ = 36.0f;
-    float divider_footer_ = 120.0f;
 };
 
 } // namespace
@@ -1086,7 +795,10 @@ void FileOperationWindow::Render() {
     std::wstring badge_text;
     fluent::BadgeKind badge_kind = fluent::BadgeKind::Success;
     if (failed) {
-        file_line = status_.last_error.empty() ? l10n::Get(l10n::StringId::OpFailed).c_str() : status_.last_error;
+        // pulse_shell errors are Simplified; known messages are localized and
+        // file names are kept as they are on disk.
+        file_line = status_.last_error.empty() ? l10n::Get(l10n::StringId::OpFailed)
+                                               : l10n::ServiceErrorText(status_.last_error);
         badge_text = l10n::Get(l10n::StringId::OpFailedBadge).c_str();
         badge_kind = fluent::BadgeKind::Danger;
     } else if (paused) {
@@ -1403,10 +1115,5 @@ ConflictDialogResult ShowFileConflictDialog(HWND owner,
     return window.Show(owner, conflict, dark, accent);
 }
 
-bool ShowConfirmDialog(HWND owner, const ConfirmDialogSpec& spec, bool dark,
-                       D2D1_COLOR_F accent) {
-    ConfirmWindow window;
-    return window.Show(owner, spec, dark, accent);
-}
 
 } // namespace pulse::ui

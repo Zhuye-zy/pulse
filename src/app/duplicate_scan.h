@@ -7,11 +7,13 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace pulse {
 
 struct AppState;
+namespace ops { struct OpRequest; }
 
 namespace app {
 
@@ -67,6 +69,7 @@ struct DuplicateScanSession {
     void SetKeep(size_t group, size_t file);
     std::vector<std::wstring> FilesToDelete(size_t group) const;
     std::vector<std::wstring> AllFilesToDelete() const;
+    bool BuildCleanupRequest(ops::OpRequest& request, size_t group = SIZE_MAX) const;
     void RemoveDeleted(const std::vector<std::wstring>& paths);
     size_t ExtraCount() const;
 
@@ -78,6 +81,7 @@ private:
 
     std::unordered_map<uint32_t, DuplicateFile> pending_groups_;
     std::unordered_map<uint32_t, size_t> group_indices_;
+    std::unordered_set<uint32_t> invalidated_groups_;
     std::chrono::steady_clock::time_point speed_tick_{};
     uint64_t speed_files_ = 0;
     uint64_t speed_bytes_ = 0;

@@ -7,7 +7,12 @@ namespace pulse {
 
 void HideMainWindowToTray(AppState& s) {
     s.hidden_to_tray = true;
-    s.tray_controller.HideWindow();
+    s.tray_controller.HideWindow(WantsTrayIcon(s, true));
+}
+
+bool WantsTrayIcon(const AppState& s, bool window_hidden) {
+    return app::TrayIconWanted(s.appPrefs.keep_running_on_close || s.appPrefs.global_search_enabled,
+                               s.appPrefs.notify_icon_mode, window_hidden);
 }
 
 bool TakeFreshStart(AppState& s) {
@@ -30,6 +35,9 @@ void StartFreshAt(AppState& s, const std::wstring& path) {
 void InstallTrayRevealHook(AppState& s) {
     s.tray_controller.SetBeforeRestore([&s] {
         if (TakeFreshStart(s)) StartFreshAt(s, app::DefaultLocation(s.appPrefs));
+        // A sign-in launch into the tray (startup_launch.h) shows the icon even
+        // when neither setting keeps it; back to the usual rule once revealed.
+        s.tray_controller.SetVisible(WantsTrayIcon(s, false));
     });
 }
 

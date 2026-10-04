@@ -129,7 +129,7 @@ std::vector<ShellMenuEntry> ApplyExplorerPrefs(const ContextMenuPrefs& prefs,
         append_compress_children(kept[static_cast<size_t>(vendor_index)].entry);
     } else if (!compress_top.empty()) {
         ShellMenuEntry group;
-        group.text = ipc::CompressFlyoutText();
+        group.text = l10n::Cn(ipc::CompressFlyoutText());
         group.from_com = true;
         append_compress_children(group);
         if (!group.children.empty())
@@ -317,7 +317,11 @@ void ContextMenuController::MergeStaticCache(
 }
 
 bool ContextMenuController::CompleteStaticVerbs(const std::wstring& extension,
-                                                std::vector<StaticVerb> verbs) {
+                                                std::vector<StaticVerb> verbs,
+                                                uint32_t generation) {
+    // Read before the registry changed: it must neither fill the fresh cache
+    // nor clear a newer request for the same extension.
+    if (generation != cache_generation_) return false;
     static_pending_.erase(extension);
     static_seeded_.erase(extension);
     static_cache_[extension] = std::move(verbs);
@@ -327,6 +331,7 @@ bool ContextMenuController::CompleteStaticVerbs(const std::wstring& extension,
 }
 
 void ContextMenuController::InvalidateCaches() {
+    ++cache_generation_;
     static_cache_.clear();
     static_seeded_.clear();
     com_cache_.clear();
@@ -350,8 +355,13 @@ ContextMenuController::QueryCompletion ContextMenuController::CompleteComQuery(
     result.accepted = true;
     result.partial = partial;
     result.cache_key = CacheKey(background_, extension_);
-    com_cache_[result.cache_key] = com_items_;
+    // A partial snapshot only holds the handlers that finished inside the
+    // host's fast budget, so it must feed this session and nothing else: the
+    // next right-click of the same type paints from com_cache_ before the live
+    // answer arrives, and caching an incomplete list made packaged verbs
+    // (WinRAR and friends) show up on one right-click and vanish on the next.
     if (!partial) {
+        com_cache_[result.cache_key] = com_items_;
         com_ready_ = true;
         if (query_started_at_ != 0 && completed_at >= query_started_at_) {
             result.elapsed_ms = static_cast<uint32_t>(std::min<uint64_t>(
@@ -417,7 +427,7 @@ std::vector<ShellMenuEntry> ContextMenuController::ComposeEntries(
             continue;
         }
         if (flyout && entry.clsid.empty() &&
-            ipc::ToLowerVerb(entry.text) == ipc::ToLowerVerb(ipc::CompressFlyoutText())) {
+            ipc::ToLowerVerb(entry.text) == ipc::ToLowerVerb(l10n::Cn(ipc::CompressFlyoutText()))) {
             if (prefs.RecordSeen(ipc::CompressCatalogKey(), ipc::CompressCatalogText(),
                                  true, ipc::CtxMenuCategory::Software, true))
                 prefs_changed = true;

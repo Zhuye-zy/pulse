@@ -210,6 +210,10 @@ float Ease(EasingCurve curve, float value) noexcept {
     return t;
 }
 
+const wchar_t* OmnibarHintBadge() {
+    return pulse::l10n::Pick(L"\u547D\u4EE4", L"Command");
+}
+
 } // namespace
 
 float EvaluateMotion(const MotionSpec& motion, float elapsed_ms) noexcept {
@@ -837,9 +841,21 @@ void Painter::DrawButton(const ButtonSpec& spec) {
         float right = content.right;
         if (spec.drop_down) {
             const float arrow_width = Px(16.0f);
-            DrawGlyph(kChevronDown,
-                      D2D1::RectF(right - arrow_width, content.top, right, content.bottom),
-                      foreground);
+            const D2D1_RECT_F arrow =
+                D2D1::RectF(right - arrow_width, content.top, right, content.bottom);
+            const float turn = std::clamp(spec.chevron_turn, 0.0f, 1.0f);
+            if (turn > 0.0f) {
+                // Rotate about the glyph centre (the vector chevron is centred there).
+                D2D1::Matrix3x2F saved;
+                dc_->GetTransform(&saved);
+                const D2D1_POINT_2F centre = D2D1::Point2F((arrow.left + arrow.right) * 0.5f,
+                                                           (arrow.top + arrow.bottom) * 0.5f);
+                dc_->SetTransform(D2D1::Matrix3x2F::Rotation(180.0f * turn, centre) * saved);
+                DrawGlyph(kChevronDown, arrow, foreground);
+                dc_->SetTransform(saved);
+            } else {
+                DrawGlyph(kChevronDown, arrow, foreground);
+            }
             right -= arrow_width + Px(4.0f);
         }
         IDWriteTextFormat* body = BodyFormat();
@@ -2144,7 +2160,7 @@ float Painter::MeasureBadgeWidth(std::wstring_view text) const {
 }
 
 float Painter::OmnibarHintReservePx() const {
-    const float label = MeasureTextWidth(compositor_, CaptionFormat(), kOmnibarHintBadge);
+    const float label = MeasureTextWidth(compositor_, CaptionFormat(), OmnibarHintBadge());
     const float label_w = label > 0.0f ? label : Px(24.0f);
     return Px(8.0f) + Px(8.0f) + Px(16.0f) + Px(6.0f) + label_w + Px(6.0f)
          + MeasureBadgeWidth(kOmnibarHintKey) + Px(6.0f);
@@ -2173,9 +2189,9 @@ D2D1_RECT_F Painter::DrawOmnibarHints(const D2D1_RECT_F& field, bool skip_search
     }
     x += icon + Px(6.0f);
 
-    const float label = MeasureTextWidth(compositor_, CaptionFormat(), kOmnibarHintBadge);
+    const float label = MeasureTextWidth(compositor_, CaptionFormat(), OmnibarHintBadge());
     const float label_w = label > 0.0f ? label : Px(24.0f);
-    DrawText(kOmnibarHintBadge,
+    DrawText(OmnibarHintBadge(),
              D2D1::RectF(x, chip_top, x + label_w, chip_bottom),
              CaptionFormat(), theme_->text_secondary, HorizontalAlignment::Left,
              BlendOver(chip_fill, theme_->bg));
@@ -2218,6 +2234,24 @@ D2D1_RECT_F Painter::SidebarSectionHeaderIconRect(const D2D1_RECT_F& bounds) con
     const float left = bounds.left + Px(10.0f);
     const float inset = Px(4.0f);
     return D2D1::RectF(left, bounds.top + inset, left + Px(16.0f), bounds.bottom - inset);
+}
+
+D2D1_RECT_F Painter::SidebarSectionHeaderTitleRect(const D2D1_RECT_F& bounds,
+                                                   std::wstring_view text, bool has_icon) const {
+    // Same layout as DrawSidebarSectionHeader: icon, 6 px gap, then the text.
+    const float text_left = has_icon ? SidebarSectionHeaderIconRect(bounds).right + Px(6.0f)
+                                     : bounds.left + Px(10.0f);
+    const float max_right = bounds.right - Px(60.0f);
+    float width = 0.0f;
+    if (IDWriteTextLayout* layout = GetTextLayout(compositor_, SectionFormat(), text,
+            std::max(1.0f, max_right - text_left), std::max(1.0f, Height(bounds)),
+            DWRITE_TEXT_ALIGNMENT_LEADING)) {
+        DWRITE_TEXT_METRICS metrics{};
+        if (SUCCEEDED(layout->GetMetrics(&metrics))) width = metrics.width;
+    }
+    const float right = std::max(text_left, std::min(max_right, text_left + width + Px(8.0f)));
+    return D2D1::RectF(bounds.left + Px(2.0f), bounds.top + Px(3.0f), right,
+                       bounds.bottom - Px(3.0f));
 }
 
 void Painter::DrawSidebarSectionHeader(const SidebarSectionHeaderSpec& spec) {
@@ -2296,23 +2330,31 @@ void Painter::DrawDriveSidebarItem(const DriveSidebarItemSpec& spec) {
 
     const auto track = D2D1::RectF(text_left, content.bottom - Px(4.0f), content.right,
                                    content.bottom);
-    FillRoundedRect(track, Px(2.0f),
-                    dark_ ? Rgba(0xFFFFFF, 20) : Rgba(0x000000, 18));
-    const float value = Clamp01(spec.capacity);
-    if (value > 0.0f) {
-        auto value_rect = track;
-        value_rect.right = track.left + Width(track) * value;
-        D2D1_COLOR_F value_color = spec.bar_color.a > 0.0f ? spec.bar_color
-                                 : spec.icon_color.a > 0.0f ? spec.icon_color
-                                                            : theme_->accent;
-        if (value >= 0.90f) {
-            value_color = theme_->danger;
-        }
-        FillRoundedRect(value_rect, Px(2.0f), value_color);
-    }
+    DrawCapacityBar(track, spec.capacity,
+                    spec.bar_color.a > 0.0f ? spec.bar_color
+                    : spec.icon_color.a > 0.0f ? spec.icon_color
+                                               : theme_->accent);
     if (spec.state.keyboard_focus) {
         DrawFocusRing(spec.bounds, radius);
     }
+}
+
+void Painter::DrawCapacityBar(const D2D1_RECT_F& track, float capacity, D2D1_COLOR_F value_color) {
+    if (!theme_ || !dc_ || Width(track) <= 0.0f || Height(track) <= 0.0f) {
+        return;
+    }
+    const float radius = Height(track) * 0.5f;
+    FillRoundedRect(track, radius, dark_ ? Rgba(0xFFFFFF, 20) : Rgba(0x000000, 18));
+    const float value = Clamp01(capacity);
+    if (value <= 0.0f) {
+        return;
+    }
+    auto value_rect = track;
+    value_rect.right = track.left + Width(track) * value;
+    if (value >= 0.90f) {
+        value_color = theme_->danger;
+    }
+    FillRoundedRect(value_rect, radius, value_color);
 }
 
 void Painter::DrawPaneHeader(const PaneHeaderSpec& spec) {

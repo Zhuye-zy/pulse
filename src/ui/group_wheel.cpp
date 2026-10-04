@@ -1,6 +1,7 @@
 #include "group_wheel.h"
 #include "FluentTokens.h"
 #include "command_icons.h"
+#include "typography.h"
 #include "ui_motion.h"
 
 #include <algorithm>
@@ -92,6 +93,8 @@ void GroupWheel::Open(GroupWheelData data, const D2D1_RECT_F& anchor, const D2D1
     const float left = std::clamp(anchor.left, client.left + 12.0f * s,
                                   std::max(client.left + 12.0f * s, client.right - w - 12.0f * s));
     panel_ = D2D1::RectF(left, top, left + w, top + h);
+    apply_all_rect_ = {};
+    apply_all_hot_ = false;
     const int applied = std::clamp(data_.applied, 0, std::max(0, Count() - 1));
     t_ = static_cast<float>(applied);
     p_ = animate_ ? t_ - 0.6f : t_;   // roll in to the current choice
@@ -117,6 +120,18 @@ void GroupWheel::Close() {
 
 bool GroupWheel::Contains(float x, float y) const noexcept {
     return open_ && x >= panel_.left && x < panel_.right && y >= panel_.top && y < panel_.bottom;
+}
+
+bool GroupWheel::HitApplyAll(float x, float y) const noexcept {
+    const auto& r = apply_all_rect_;
+    return open_ && r.right > r.left && x >= r.left && x < r.right && y >= r.top && y < r.bottom;
+}
+
+bool GroupWheel::HoverApplyAll(float x, float y) noexcept {
+    const bool hot = HitApplyAll(x, y);
+    if (hot == apply_all_hot_) return false;
+    apply_all_hot_ = hot;
+    return true;
 }
 
 float GroupWheel::Clamp(float v) const noexcept {
@@ -259,13 +274,15 @@ void GroupWheel::ReleaseFormats() {
 }
 
 void GroupWheel::EnsureFormats(IDWriteFactory* dwrite, IDWriteTextFormat* base) {
-    if (f_name_ && std::abs(format_scale_ - scale_) < 0.001f) return;
+    // Text follows Settings > Interface font size; the cache key carries it too.
+    const float text_scale = scale_ * typography::UiFontScale();
+    if (f_name_ && std::abs(format_scale_ - text_scale) < 0.001f) return;
     GwRelease(f_name_);
     GwRelease(f_small_);
     GwRelease(f_head_);
     GwRelease(f_kbd_);
     GwRelease(f_seg_);
-    format_scale_ = scale_;
+    format_scale_ = text_scale;
     wchar_t family[128] = L"Segoe UI";
     wchar_t locale[LOCALE_NAME_MAX_LENGTH] = L"zh-cn";
     if (base) {
@@ -274,7 +291,7 @@ void GroupWheel::EnsureFormats(IDWriteFactory* dwrite, IDWriteTextFormat* base) 
     }
     auto make = [&](const wchar_t* fam, float size, DWRITE_FONT_WEIGHT weight, IDWriteTextFormat** out) {
         if (FAILED(dwrite->CreateTextFormat(fam, nullptr, weight, DWRITE_FONT_STYLE_NORMAL,
-                                            DWRITE_FONT_STRETCH_NORMAL, size * scale_, locale, out)) || !*out)
+                                            DWRITE_FONT_STRETCH_NORMAL, size * text_scale, locale, out)) || !*out)
             return;
         (*out)->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
         (*out)->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
@@ -374,9 +391,21 @@ void GroupWheel::DrawFooter(ID2D1DeviceContext* dc, IDWriteFactory* dwrite, cons
     const float s = scale_;
     const D2D1_RECT_F drum = DrumRect();
     // Bottom row across the whole panel, left-aligned with the selection card.
-    const float min_x = drum.left + 16.0f * s, max_x = panel_.right - 22.0f * s;
+    const float min_x = drum.left + 16.0f * s;
+    float max_x = panel_.right - 22.0f * s;
     const float y = panel_.bottom - 32.0f * s, hgt = 20.0f * s;
     const float a = animate_ ? fade_value_ : 1.0f;
+    // "Apply to all folders" sits at the right end; the key hints shrink around it.
+    apply_all_rect_ = {};
+    if (!data_.apply_all_text.empty() && !data_.sort_controls && f_small_) {
+        const float bw = g_ink.Measure(f_small_, data_.apply_all_text) + 20.0f * s;
+        const D2D1_RECT_F b = D2D1::RectF(max_x - bw, y - 5.0f * s, max_x, y + hgt + 5.0f * s);
+        apply_all_rect_ = b;
+        g_ink.Fill(b, 6.0f * s, GwAlpha(theme.accent, (apply_all_hot_ ? 0.18f : 0.09f) * a));
+        g_ink.Text(f_small_, data_.apply_all_text, D2D1::RectF(b.left + 10.0f * s, y, b.right, y + hgt),
+                   GwAlpha(theme.accent, a));
+        max_x = b.left - 10.0f * s;
+    }
     const float gap = 4.0f * s;
     // Two passes: measure, then draw left-aligned. Only very narrow panels drop the
     // words and keep the keycaps so the hint never leaves the panel.

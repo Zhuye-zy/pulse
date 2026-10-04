@@ -29,8 +29,10 @@ PreviewCodecInfo PreviewCodec(int index);
 // Registry package lookup plus Media Foundation decoder enumeration (video).
 // Cached; refresh re-runs it (after the user may have installed something).
 // The returned mask has kPreviewCodecsDetected set once detection ran.
+// Never blocks: detection runs on a worker thread and invalidates `notify`
+// when the mask changes, so call it again on the next paint.
 inline constexpr unsigned kPreviewCodecsDetected = 0x80000000u;
-unsigned DetectPreviewCodecs(bool refresh);
+unsigned DetectPreviewCodecs(bool refresh, HWND notify);
 bool OpenPreviewCodecStore(HWND owner, int index);
 
 // Shared by layout and drawing so the measured height matches the paint.

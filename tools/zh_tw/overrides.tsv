@@ -1,0 +1,24 @@
+# 有歧義、需逐條指定的字串：IDS<TAB>繁體中文（台灣）。內容須為 RC 字串字面量。
+IDS_PROPERTIES	內容
+IDS_CONTEXT_OPEN_WITH_DESC	登錄檔中的「用某應用程式開啟」和「開啟方式...」。COM 重複項目預設關閉。
+IDS_SETTINGS_UI_1904	選擇應用程式的外觀主題
+IDS_OP_SOURCE_SHORT	來源
+IDS_TRAY_EXIT	結束
+IDS_COMPARE_EXIT	離開比較
+IDS_GLOBAL_SEARCH_DESC	啟用後關閉視窗仍可叫出；在系統匣選擇「結束」即可完全關閉
+IDS_ABOUT_HOMEPAGE	專案首頁
+IDS_SORT_WHEEL_SAMPLES	照片|專案資料|報告.pdf|旅行照片.jpg|預算.xlsx|會議記錄.docx|音樂.mp3
+IDS_SETTINGS_CONTEXT_MENU	右鍵選單
+IDS_SETTINGS_NOTIFY_ICON	系統匣圖示
+IDS_EXIT_PULSE	結束 Pulse
+IDS_LIST_SELECTION_OUTLINE	選取項目外框
+IDS_LIST_SELECTION_OUTLINE_DESC	選取的檔案和資料夾外加一圈強調色外框，在長清單中更容易辨識
+IDS_SIDEBAR_HIDE_CLOUD	在側邊欄中隱藏 OneDrive
+IDS_SIDEBAR_CLOUD_HIDDEN_HINT	已從側邊欄隱藏。在任一區段標題或側邊欄底部空白處按右鍵，即可重新顯示。
+IDS_SIDEBAR_SHOW_HIDDEN	顯示已隱藏的區段
+IDS_DOWNLOAD_UPDATE	更新並重新啟動
+IDS_UPDATE_WAITING_OPERATIONS	等待目前工作完成，隨後自動更新並重新啟動…
+IDS_UPDATE_INSTALLING_STATUS	正在更新，完成後自動還原工作環境…
+IDS_UPDATE_CLICK_TO_INSTALL	點選更新並重新啟動：下載驗證後等待工作完成，自動安裝並還原工作環境。
+IDS_UPDATE_DESC	自動檢查更新，點選一次即可更新並還原工作環境
+IDS_INSTALLING_UPDATE	正在無訊息更新，完成後會自動重新開啟並還原分頁。

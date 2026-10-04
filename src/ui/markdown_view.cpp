@@ -1,5 +1,6 @@
 // markdown_view.cpp — see markdown_view.h.
 #include "markdown_view.h"
+#include "math_formula.h"
 #include "syntax_highlight.h"
 #include "thumbnail_cache.h"
 #include "typography.h"
@@ -15,7 +16,10 @@ namespace {
 
 template <class T> using WrlPtr = Microsoft::WRL::ComPtr<T>;
 
-enum : uint32_t { kBold = 1, kItalic = 2, kCode = 4, kStrike = 8, kLink = 16, kImage = 32, kUnderline = 64 };
+enum : uint32_t {
+    kBold = 1, kItalic = 2, kCode = 4, kStrike = 8, kLink = 16, kImage = 32,
+    kUnderline = 64, kMath = 128, kDisplayMath = 256
+};
 
 std::wstring Unescape(std::wstring_view field) {
     std::wstring out;
@@ -146,6 +150,7 @@ bool MarkdownView::SetPayload(const std::wstring& payload, const std::wstring& f
     const std::wstring_view all(payload_);
     size_t pos = all.find(L'\n') + 1;
     int table = -1, row = -1, col = 0;
+    size_t math_count = 0, math_chars = 0;
     while (pos < all.size()) {
         size_t end = all.find(L'\n', pos);
         if (end == std::wstring_view::npos) end = all.size();
@@ -209,6 +214,15 @@ bool MarkdownView::SetPayload(const std::wstring& payload, const std::wstring& f
                 if (parts.size() >= 4) run.target = PercentDecode(Unescape(parts[3]));
                 if (run.start > b.text.size()) continue;
                 run.length = (std::min)(run.length, static_cast<uint32_t>(b.text.size()) - run.start);
+                if (run.flags & (kMath | kDisplayMath)) {
+                    // Bound layout work across the document as well as inside each formula.
+                    if (math_count >= 256 || run.length > 4096 || math_chars + run.length > 65536)
+                        run.flags &= ~(kMath | kDisplayMath);
+                    else {
+                        ++math_count;
+                        math_chars += run.length;
+                    }
+                }
                 b.runs.push_back(std::move(run));
             }
             if (b.kind == L't') {
@@ -457,6 +471,29 @@ WrlPtr<IDWriteTextLayout> MarkdownView::MakeLayout(IDWriteFactory2* factory, con
             layout->SetFontStyle(DWRITE_FONT_STYLE_ITALIC, range);
         }
     }
+    bool display_rendered = false;
+    for (const Run& run : b.runs) {
+        if (!(run.flags & (kMath | kDisplayMath))) continue;
+        const bool display = (run.flags & kDisplayMath) != 0;
+        const std::wstring_view text(b.text.data() + run.start, run.length);
+        size_t delimiter = display ? 2 : 1;
+        if (text.starts_with(display ? L"\\[" : L"\\(") &&
+            text.ends_with(display ? L"\\]" : L"\\)")) {
+            delimiter = 2;
+        } else if (!text.starts_with(display ? L"$$" : L"$") ||
+                   !text.ends_with(display ? L"$$" : L"$")) {
+            continue;
+        }
+        if (text.size() <= delimiter * 2) continue;
+        float size = base;
+        layout->GetFontSize(run.start, &size);
+        const bool applied = ApplyMathInline(factory, layout.Get(), {run.start, run.length},
+            text.substr(delimiter, text.size() - delimiter * 2),
+            display ? (std::max)(size, 18.0f * scale_) : size, display, width);
+        display_rendered = display_rendered || (display && applied);
+    }
+    if (b.kind == L'm' && display_rendered)
+        layout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
     return layout;
 }
 
@@ -788,11 +825,9 @@ bool MarkdownView::DrawDocument(ID2D1DeviceContext* dc, IDWriteFactory2* factory
             if (!drawn) {
                 brush_->SetColor(subtle);
                 dc->FillRoundedRectangle(D2D1::RoundedRect(box, 6.0f * s, 6.0f * s), brush_.Get());
-                const bool zh = pulse::l10n::effective_language() == pulse::l10n::Language::ZhCN;
                 std::wstring label = L"\xD83D\xDDBC  " + b.text;
                 if (b.image_path.empty())
-                    label += zh ? L"\x3000\xFF08\x672A\x52A0\x8F7D\x8FDC\x7A0B\x6216\x7F3A\x5931\x7684\x56FE\x7247\xFF09"
-                                : L"   (remote or missing image not loaded)";
+                    label += pulse::l10n::Pick(L"\x3000\xFF08\x672A\x52A0\x8F7D\x8FDC\x7A0B\x6216\x7F3A\x5931\x7684\x56FE\x7247\xFF09", L"   (remote or missing image not loaded)");
                 WrlPtr<IDWriteTextLayout> tl;
                 factory->CreateTextLayout(label.data(), static_cast<UINT32>(label.size()), body_.Get(),
                                           (std::max)(1.0f, b.w - 24.0f * s), b.h, &tl);
@@ -827,7 +862,11 @@ bool MarkdownView::DrawDocument(ID2D1DeviceContext* dc, IDWriteFactory2* factory
                        h.current ? HexColor(0xF59E0B, 0.75f) : HexColor(0xFACC15, dark ? 0.35f : 0.45f));
         DrawRanges(dc, b, bx, by, sel_start, sel_end, selection_color);
         brush_->SetColor(b.quote > 0 ? theme.text_secondary : theme.text);
-        dc->DrawTextLayout(D2D1::Point2F(bx, by), b.layout.Get(), brush_.Get(), D2D1_DRAW_TEXT_OPTIONS_NONE);
+        const bool has_math = std::any_of(b.runs.begin(), b.runs.end(), [](const Run& run) {
+            return (run.flags & (kMath | kDisplayMath)) != 0;
+        });
+        if (has_math) DrawMathTextLayout(dc, b.layout.Get(), D2D1::Point2F(bx, by), brush_.Get());
+        else dc->DrawTextLayout(D2D1::Point2F(bx, by), b.layout.Get(), brush_.Get(), D2D1_DRAW_TEXT_OPTIONS_NONE);
         if (b.kind == L'h' && ToU32(b.arg) <= 2) {
             brush_->SetColor(line);
             dc->FillRectangle(R(bx, by + b.h + 6.0f * s, bx + b.w, by + b.h + 7.0f * s), brush_.Get());
@@ -873,8 +912,7 @@ bool MarkdownView::DrawDocument(ID2D1DeviceContext* dc, IDWriteFactory2* factory
         const float fy = oy + footer_y_;
         brush_->SetColor(line);
         dc->FillRectangle(R(origin_x_, fy, origin_x_ + W, fy + 1.0f * s), brush_.Get());
-        const bool zh = pulse::l10n::effective_language() == pulse::l10n::Language::ZhCN;
-        std::wstring label = zh ? L"下一章" : L"Next chapter";
+        std::wstring label = pulse::l10n::Pick(L"下一章", L"Next chapter");
         const std::wstring& name = sections_[section_ + 1].name;
         if (!name.empty()) label += L"  ·  " + name.substr(0, 60);
         label += L"  ›";
@@ -969,7 +1007,8 @@ bool MarkdownView::HitTest(float x, float y, uint32_t& offset) const {
     BOOL trailing = FALSE, inside = FALSE;
     DWRITE_HIT_TEST_METRICS m{};
     if (FAILED(b.layout->HitTestPoint(x - (origin_x_ + b.x), doc_y - b.y, &trailing, &inside, &m))) return true;
-    offset += (std::min)(m.textPosition + (trailing ? 1u : 0u), static_cast<uint32_t>(b.text.size()));
+    const uint32_t trailing_length = m.isText ? 1u : m.length;
+    offset += (std::min)(m.textPosition + (trailing ? trailing_length : 0u), static_cast<uint32_t>(b.text.size()));
     return true;
 }
 

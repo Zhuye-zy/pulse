@@ -12,6 +12,12 @@ struct ClipboardData {
     uint32_t sequence = 0;
 };
 
+// CFSTR_PREFERREDDROPEFFECT -> "is this a cut?". Only an exact MOVE counts:
+// many applications publish COPY|MOVE (3) to mean "either is fine", and a
+// bitwise test reads that as a cut, so pasting would move - and delete - the
+// user's originals instead of copying them.
+bool PreferredEffectIsCut(uint32_t preferred_effect);
+
 // Writes paths as CF_HDROP + CFSTR_PREFERREDDROPEFFECT so Explorer can paste them.
 // Must be called on the UI thread (OpenClipboard affinity).
 bool WriteClipboard(const std::vector<std::wstring>& paths, bool cut);

@@ -12,6 +12,11 @@ int wmain(int argc, wchar_t** argv) {
         std::cout << (ok ? "[PASS] " : "[FAIL] ") << label << '\n';
         if (!ok) ++failures;
     };
+    const auto parameters = UpdateInstallParameters(L"C:\\Program Files\\Pulse\\pulse.exe");
+    check(parameters == L"/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PULSEUPDATE=1 /LOG /DIR=\"C:\\Program Files\\Pulse\"",
+        "update uses silent restart mode and quotes the existing installation directory");
+    check(UpdateInstallParameters(L"pulse.exe").empty() && UpdateInstallParameters(L"C:\\bad\"path\\pulse.exe").empty(),
+        "invalid installer target cannot inject command switches");
     HWND window = CreateWindowExW(0, L"STATIC", L"Update test", 0, 0, 0, 0, 0, HWND_MESSAGE,
         nullptr, GetModuleHandleW(nullptr), nullptr);
     if (argc == 4 && std::wstring_view(argv[1]) == L"--download") {
@@ -114,7 +119,7 @@ int wmain(int argc, wchar_t** argv) {
     check(progress.percent() == -1, "unknown response length stays indeterminate");
     progress = {UpdatePhase::Downloading, 9, 8};
     check(progress.percent() == -1, "contradictory total never fabricates a percentage");
-    for (const auto phase : {UpdatePhase::Connecting, UpdatePhase::Verifying, UpdatePhase::Ready,
+    for (const auto phase : {UpdatePhase::Connecting, UpdatePhase::Verifying, UpdatePhase::Ready, UpdatePhase::WaitingOperations,
                             UpdatePhase::Launching, UpdatePhase::Installing}) {
         progress = {phase, 8, 8};
         check(progress.active() && progress.percent() == -1, "non-download stages never imply installation percentage");

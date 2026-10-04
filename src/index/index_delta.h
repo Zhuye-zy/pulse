@@ -13,7 +13,7 @@
 
 namespace pulse::index {
 
-inline constexpr uint32_t kDeltaVer = 1;
+inline constexpr uint32_t kDeltaVer = 2;
 
 enum class DeltaOp : uint8_t {
     Add = 1,
@@ -42,7 +42,7 @@ public:
     // path_ while Close() was running and could not reopen the log.
     bool Reset(uint64_t base_built);
 
-    void QueueAdd(int32_t parent, uint8_t flags, uint32_t mtime, uint64_t size,
+    void QueueAdd(int32_t idx, int32_t parent, uint8_t flags, uint32_t mtime, uint64_t size,
                   std::wstring_view name, uint64_t frn);
     void QueuePatch(int32_t idx, uint8_t which, int32_t parent, uint8_t flags,
                     uint32_t mtime, uint64_t size, std::wstring_view name);

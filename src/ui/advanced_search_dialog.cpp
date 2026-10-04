@@ -4,6 +4,7 @@
 #include "FluentTokens.h"
 #include "fluent_components.h"
 #include "fluent_menu.h"
+#include "folder_picker_dialog.h"
 #include "typography.h"
 #include "ui_compositor.h"
 #include "window_helpers.h"
@@ -44,24 +45,6 @@ enum HitId : int {
     kHitType = 100, kHitDate = 200, kHitSize = 300, kHitLocation = 400,
     kHitNameHow = 500, kHitContentMode = 600,
 };
-
-bool PickFolderPath(HWND owner, std::wstring& path) {
-    ComPtr<IFileOpenDialog> dialog;
-    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
-                                IID_PPV_ARGS(&dialog)))) return false;
-    dialog->SetTitle(l10n::Get(I::AdvSearchBrowse).c_str());
-    FILEOPENDIALOGOPTIONS options = 0;
-    dialog->GetOptions(&options);
-    dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
-    if (FAILED(dialog->Show(owner))) return false;
-    ComPtr<IShellItem> item;
-    if (FAILED(dialog->GetResult(&item))) return false;
-    PWSTR folder = nullptr;
-    if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &folder)) || !folder) return false;
-    path.assign(folder);
-    CoTaskMemFree(folder);
-    return !path.empty();
-}
 
 std::wstring Format(I id, const std::wstring& a) {
     std::wstring out(a.size() + 256, L'\0');
@@ -525,14 +508,8 @@ private:
 
     // ---- edits ---------------------------------------------------------------------
 
-    D2D1_COLOR_F EditForeground() const {
-        return dark_ ? D2D1::ColorF(1.0f, 1.0f, 1.0f)
-                     : D2D1::ColorF(26.0f / 255.0f, 26.0f / 255.0f, 26.0f / 255.0f);
-    }
-    D2D1_COLOR_F EditBackground() const {
-        return dark_ ? D2D1::ColorF(30.0f / 255.0f, 30.0f / 255.0f, 30.0f / 255.0f)
-                     : D2D1::ColorF(1.0f, 1.0f, 1.0f);
-    }
+    D2D1_COLOR_F EditForeground() const { return ColorFromRef(EditTextColor(dark_)); }
+    D2D1_COLOR_F EditBackground() const { return ColorFromRef(EditBackColor(dark_)); }
 
     I KeywordHint() const { return content_mode_ ? I::AdvKeywordContentHint : I::AdvKeywordNameHint; }
     I ExcludeHint() const { return content_mode_ ? I::AdvExcludeContentHint : I::AdvExcludeNameHint; }
@@ -649,7 +626,7 @@ private:
         LRESULT result = 0;
         if (!HandleChildEditMessage(self->compositor_, self->compositor_.TextFormat(),
                                     self->EditForeground(), self->EditBackground(),
-                                    self->edit_brush_, hwnd, msg, wparam, lparam, result)) {
+                                    EditBackBrush(self->edit_brush_), hwnd, msg, wparam, lparam, result)) {
             result = DefPresentedChildEditProc(self->compositor_, self->compositor_.TextFormat(),
                                                self->EditForeground(), self->EditBackground(),
                                                hwnd, msg, wparam, lparam);
@@ -775,8 +752,11 @@ private:
         } else if (id >= kHitLocation && id < kHitLocation + 100) {
             const int v = id - kHitLocation;
             if (v == 2) {
+                FolderPickerSpec picker;
+                picker.title = l10n::Get(I::AdvSearchBrowse);
+                picker.initial_path = spec_.custom_folder;
                 std::wstring folder;
-                if (!PickFolderPath(hwnd_, folder)) return;
+                if (!ShowFolderPicker(hwnd_, picker, dark_, accent_, folder)) return;
                 spec_.custom_folder = folder;
                 spec_.location = app::LocationScope::CustomFolder;
             } else {
@@ -1019,9 +999,9 @@ private:
             return 0;
         case WM_CTLCOLOREDIT: {
             const HDC hdc = reinterpret_cast<HDC>(wparam);
-            SetTextColor(hdc, dark_ ? RGB(255, 255, 255) : RGB(26, 26, 26));
-            SetBkColor(hdc, dark_ ? RGB(30, 30, 30) : RGB(255, 255, 255));
-            return reinterpret_cast<LRESULT>(edit_brush_);
+            SetTextColor(hdc, EditTextColor(dark_));
+            SetBkColor(hdc, EditBackColor(dark_));
+            return reinterpret_cast<LRESULT>(EditBackBrush(edit_brush_));
         }
         case WM_COMMAND:
             if (LOWORD(wparam) == IDOK) { Complete(true); return 0; }

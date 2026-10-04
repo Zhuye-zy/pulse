@@ -676,6 +676,32 @@ int RunToolbarLayoutTest(AppState& s, const wchar_t* output) {
             check(create.top > address.bottom && split.right < w &&
                   region(create) == ui::HitTestResult::NewButton && region(split) == ui::HitTestResult::SplitButton,
                 "second toolbar row and popup anchors match hit targets");
+            // Sort and Group drop-downs are sized to their labels, so each chevron
+            // sits the same distance after its text; hit targets follow.
+            const auto row = s.renderer.ToolbarLayoutAt(w, create.right - create.left);
+            if (w - sidebar.right >= 700*scale) {
+                const float sort_w = row.sort.right - row.sort.left;
+                check(sort_w >= 60*scale && region(row.sort) == ui::HitTestResult::ToolbarSort,
+                    "sort drop-down fits its label and stays clickable");
+                if (row.group.right > row.group.left && sort_w < 120*scale) {
+                    const float group_w = row.group.right - row.group.left;
+                    const std::wstring& sort_label = l10n::Get(l10n::StringId::ToolbarSort);
+                    const std::wstring& group_label = l10n::Get(l10n::StringId::ToolbarGroup);
+                    bool cjk = sort_label.size() == group_label.size() && !sort_label.empty();
+                    for (wchar_t c : sort_label + group_label) cjk = cjk && c >= 0x4E00 && c <= 0x9FFF;
+                    const float diff = sort_w > group_w ? sort_w - group_w : group_w - sort_w;
+                    check(region(row.group) == ui::HitTestResult::ToolbarGroup && (!cjk || diff < 1.0f),
+                        "group drop-down matches sort: chevron right after the label");
+                    // Filter has no chevron: same label length = 20 DIP (chevron + gap) narrower,
+                    // unless the 64 DIP floor (kept above icon-only) applies.
+                    const float filter_w = row.filter.right - row.filter.left;
+                    const float chevron = sort_w - filter_w;
+                    const bool at_floor = filter_w <= 64.0f*scale + 0.5f;
+                    check(region(row.filter) == ui::HitTestResult::FilterBox && filter_w >= 60*scale &&
+                          (!cjk || at_floor || (chevron > 19.0f*scale && chevron < 21.0f*scale)),
+                        "filter fits its label like sort and group");
+                }
+            }
         }
     }
     }

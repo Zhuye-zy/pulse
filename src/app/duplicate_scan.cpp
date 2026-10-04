@@ -1,4 +1,6 @@
 #include "duplicate_scan.h"
+#include "../ops/ops_manager.h"
+#include "../common/path_utils.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -8,6 +10,19 @@ namespace {
 
 bool SamePath(const std::wstring& left, const std::wstring& right) {
     return CompareStringOrdinal(left.c_str(), -1, right.c_str(), -1, TRUE) == CSTR_EQUAL;
+}
+
+bool IsDeletedPath(const std::wstring& file, const std::wstring& deleted) {
+    std::wstring candidate = path::StripExtendedPathPrefix(file);
+    std::wstring root = path::StripExtendedPathPrefix(deleted);
+    std::replace(candidate.begin(), candidate.end(), L'/', L'\\');
+    std::replace(root.begin(), root.end(), L'/', L'\\');
+    size_t length = root.size();
+    while (length && root[length - 1] == L'\\') --length;
+    if (!length || candidate.size() < length) return false;
+    if (CompareStringOrdinal(candidate.c_str(), static_cast<int>(length), root.c_str(),
+                             static_cast<int>(length), TRUE) != CSTR_EQUAL) return false;
+    return candidate.size() == length || candidate[length] == L'\\';
 }
 
 } // namespace
@@ -63,6 +78,7 @@ void DuplicateScanSession::ResetResults() {
     groups.clear();
     pending_groups_.clear();
     group_indices_.clear();
+    invalidated_groups_.clear();
     speed_tick_ = {};
     speed_files_ = 0;
     speed_bytes_ = 0;
@@ -113,7 +129,7 @@ void DuplicateScanSession::SortGroups() {
 void DuplicateScanSession::AppendHits(const std::vector<index::ContentHit>& hits) {
     bool changed = false;
     for (const auto& hit : hits) {
-        if (hit.group == 0) continue;
+        if (hit.group == 0 || invalidated_groups_.contains(hit.group)) continue;
         DuplicateFile file{hit.path, hit.name.empty() ? hit.path : hit.name,
                            hit.size, hit.modified};
         const auto visible = group_indices_.find(hit.group);
@@ -211,17 +227,49 @@ std::vector<std::wstring> DuplicateScanSession::AllFilesToDelete() const {
     return paths;
 }
 
+bool DuplicateScanSession::BuildCleanupRequest(ops::OpRequest& request, size_t selected) const {
+    request = {};
+    if (scanning || (selected != SIZE_MAX && selected >= groups.size())) return false;
+    request.type = ops::OpType::RecycleDelete;
+    request.duplicate_cleanup = true;
+    for (size_t index = 0; index < groups.size(); ++index) {
+        if (selected != SIZE_MAX && index != selected) continue;
+        const auto& group = groups[index];
+        if (group.files.size() < 2 || group.keep_index >= group.files.size()) continue;
+        const auto& kept = group.files[group.keep_index];
+        ops::DuplicateCleanupGroup cleanup;
+        cleanup.keeper = {kept.path, kept.size, kept.modified};
+        for (size_t file = 0; file < group.files.size(); ++file) {
+            if (file == group.keep_index) continue;
+            const auto& extra = group.files[file];
+            cleanup.extras.push_back({extra.path, extra.size, extra.modified});
+            request.sources.push_back(extra.path);
+        }
+        request.duplicate_groups.push_back(std::move(cleanup));
+    }
+    return !request.sources.empty();
+}
+
 void DuplicateScanSession::RemoveDeleted(const std::vector<std::wstring>& paths) {
     if (paths.empty()) return;
     ++result_epoch;
     for (auto& group : groups) {
         const std::wstring kept = group.keep_index < group.files.size()
             ? group.files[group.keep_index].path : std::wstring{};
+        const bool keeper_deleted = std::any_of(paths.begin(), paths.end(),
+            [&](const std::wstring& path) { return IsDeletedPath(kept, path); });
+        if (keeper_deleted) {
+            // Do not silently replace the promised retained copy with an old
+            // scan result. Only a new scan can make this group actionable again.
+            invalidated_groups_.insert(group.id);
+            group.files.clear();
+            continue;
+        }
         group.files.erase(std::remove_if(group.files.begin(), group.files.end(),
                                          [&](const DuplicateFile& file) {
                                              return std::any_of(paths.begin(), paths.end(),
                                                                 [&](const std::wstring& path) {
-                                                                    return SamePath(file.path, path);
+                                                                    return IsDeletedPath(file.path, path);
                                                                 });
                                          }),
                           group.files.end());
@@ -244,10 +292,12 @@ void DuplicateScanSession::RemoveDeleted(const std::vector<std::wstring>& paths)
     }
     for (auto it = pending_groups_.begin(); it != pending_groups_.end();) {
         const bool deleted = std::any_of(paths.begin(), paths.end(), [&](const std::wstring& path) {
-            return SamePath(it->second.path, path);
+            return IsDeletedPath(it->second.path, path);
         });
-        if (deleted) it = pending_groups_.erase(it);
-        else ++it;
+        if (deleted) {
+            invalidated_groups_.insert(it->first);
+            it = pending_groups_.erase(it);
+        } else ++it;
     }
     SortGroups();
 }

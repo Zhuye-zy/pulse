@@ -11,6 +11,7 @@
 #include "../common/text_format.h"
 #include "../common/display_path.h"
 #include "preview_format_catalog.h"
+#include "link_type_text.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -193,7 +194,7 @@ void ClearTextWidthCache() {
     constexpr const wchar_t* kIconSearch = L"\xE721";
     constexpr const wchar_t* kIconInfo = L"\xE946";
     constexpr const wchar_t* kIconFilter = L"\xE71C";
-    constexpr const wchar_t* kIconTheme = L"\xE706";
+    constexpr const wchar_t* kIconTheme = L"\xE793";
     constexpr const wchar_t* kIconSettings = L"\xE713";
     constexpr const wchar_t* kIconMinimize = L"\xE921";
     constexpr const wchar_t* kIconMaximize = L"\xE922";
@@ -294,6 +295,10 @@ void ClearTextWidthCache() {
                                source.mtime.dwLowDateTime;
         entry.is_dir = penetrated ? source.link_target_is_dir : source.is_dir;
         entry.is_reparse = source.is_reparse;
+        entry.link_kind = fs::ClassifyLink(source.attrs, source.reparse_tag);
+        entry.is_link = entry.link_kind != fs::LinkKind::None ||
+            (!source.is_dir && IsShortcutName(source.name));
+        entry.link_destination = source.link_destination;
         entry.cloud_recall = source.cloud_recall;
         if (vm.tag_catalog && source.attrs == 0 && !entry.path.empty()) {
             app::PlaceItemKind known_kind = app::PlaceItemKind::Unknown;
@@ -309,6 +314,18 @@ void ClearTextWidthCache() {
                 penetrated ? fs::StripLnkSuffix(source.name) : source.name, entry.is_dir);
         }
         if (source.drive_type != 0) entry.type_text = DriveTypeText(source.drive_type);
+        if (entry.link_kind != fs::LinkKind::None) entry.type_text = LinkTypeText(entry.link_kind);
+        if (source.drive_type != 0 && source.drive_total > 0) {
+            const uint64_t free_bytes = std::min(source.drive_free, source.drive_total);
+            entry.drive_used = static_cast<float>(
+                static_cast<double>(source.drive_total - free_bytes) /
+                static_cast<double>(source.drive_total));
+            wchar_t space[128]{};
+            swprintf_s(space, pulse::l10n::Get(pulse::l10n::StringId::PickerDriveFreeFormat).c_str(),
+                       pulse::format::ByteSize(free_bytes).c_str(),
+                       pulse::format::ByteSize(source.drive_total).c_str());
+            entry.drive_space_text = space;
+        }
         entry.record_only = source.change_record_only;
         if (!source.change_type_text.empty()) entry.type_text = source.change_type_text;
         entry.starred = vm.tag_catalog && !entry.path.empty() &&
@@ -1555,13 +1572,16 @@ StatusBarMetrics MakeStatusBarMetrics(const WindowViewModel& vm, const D2D1_RECT
 }
 
 fluent::BadgeKind IndexVolumeBadgeKind(const std::wstring& state) {
-    if (state.find(L"失败") != std::wstring::npos) return fluent::BadgeKind::Danger;
-    if (state.find(L"非 NTFS") != std::wstring::npos ||
-        state.find(L"不支持") != std::wstring::npos) return fluent::BadgeKind::Warning;
-    if (state.find(L"正在") != std::wstring::npos ||
-        state.find(L"等待") != std::wstring::npos) return fluent::BadgeKind::Accent;
-    if (state.find(L"就绪") != std::wstring::npos ||
-        state.find(L"实时") != std::wstring::npos) return fluent::BadgeKind::Success;
+    // `state` is the Simplified text reported by the index service (the view
+    // model keeps it next to the localized label); Traditional is accepted too.
+    const auto has = [&state](const wchar_t* simplified) {
+        return state.find(simplified) != std::wstring::npos ||
+               state.find(pulse::l10n::Cn(simplified)) != std::wstring::npos;
+    };
+    if (has(L"失败")) return fluent::BadgeKind::Danger;
+    if (has(L"非 NTFS") || has(L"不支持")) return fluent::BadgeKind::Warning;
+    if (has(L"正在") || has(L"等待")) return fluent::BadgeKind::Accent;
+    if (has(L"就绪") || has(L"实时")) return fluent::BadgeKind::Success;
     return fluent::BadgeKind::Neutral;
 }
 
@@ -1671,6 +1691,9 @@ struct TitleChrome {
     float settings_w = 0.0f;
     float theme_left = 0.0f;
     float theme_w = 0.0f;
+    // Settings + theme share one pill, kept apart from the window controls.
+    float group_left = 0.0f;
+    float group_right = 0.0f;
     float cmd_left = 0.0f;
     float cmd_w = 0.0f;
     float cmd_top = 0.0f;
@@ -1683,8 +1706,11 @@ TitleChrome MakeTitleChrome(float window_w, float scale, float title_h) {
     c.chrome_left = window_w - ctrl_w * 3.0f;
     c.theme_w = 36.0f * scale;
     c.settings_w = 36.0f * scale;
-    c.theme_left = c.chrome_left - c.theme_w - 6.0f * scale;
-    c.settings_left = c.theme_left - c.settings_w - 6.0f * scale;
+    const float group_pad = 2.0f * scale;
+    c.group_right = c.chrome_left - 14.0f * scale;
+    c.theme_left = c.group_right - group_pad - c.theme_w;
+    c.settings_left = c.theme_left - 1.0f * scale - c.settings_w;   // 1 DIP divider
+    c.group_left = c.settings_left - group_pad;
     c.cmd_w = 0.0f;
     c.cmd_left = c.settings_left;
     const float cmd_pad = 8.0f * scale;
@@ -1706,7 +1732,12 @@ struct SettingsLayout {
     D2D1_RECT_F duplicate_options{};
     D2D1_RECT_F section[4]{}, group[3]{}, footer{};
     D2D1_RECT_F theme_row{}, theme_tile[3]{}, effect_choice{}, language_choice{};
-    D2D1_RECT_F performance_row{}, disclosure[3]{}, filename_status{};
+    D2D1_RECT_F performance_row{}, disclosure[4]{}, filename_status{};
+    D2D1_RECT_F integration_card{}, integration_status{}, integration_summary{}, integration_hint{};
+    D2D1_RECT_F integration_retry{}, integration_restore{};
+    D2D1_RECT_F integration_section{}, integration_badge{}, integration_bar{}, integration_list_head{};
+    D2D1_RECT_F integration_chip[4]{};
+    float integration_text_right = 0.0f;
     // General > Quick Look: supported formats card (disclosure[2]).
     D2D1_RECT_F preview_section{}, preview_group{}, preview_formats{};
     D2D1_RECT_F preview_codec_row[kPreviewCodecCount]{}, preview_codec_button[kPreviewCodecCount]{};
@@ -1720,7 +1751,7 @@ struct SettingsLayout {
     D2D1_RECT_F effect_card{};
     D2D1_RECT_F effect_row[kWindowEffectCount]{};
     D2D1_RECT_F density_card{};
-    D2D1_RECT_F list_style_row[4]{};
+    D2D1_RECT_F list_style_row[5]{};
     D2D1_RECT_F density_row[3]{};
     D2D1_RECT_F folder_sort_card{};
     D2D1_RECT_F folder_sort_row[3]{};
@@ -1729,10 +1760,17 @@ struct SettingsLayout {
     D2D1_RECT_F home_folder_reset{};
     D2D1_RECT_F startup_open_card{};
     D2D1_RECT_F startup_open_row[2]{};
+    D2D1_RECT_F notify_icon_card{};
+    D2D1_RECT_F notify_icon_row[3]{};
     D2D1_RECT_F new_tab_open_card{};
     D2D1_RECT_F new_tab_open_row[2]{};
+    D2D1_RECT_F close_last_tab_row{};
+    D2D1_RECT_F confirm_delete_row{};
+    D2D1_RECT_F start_in_tray_row{};
     D2D1_RECT_F text_render_card{};
     D2D1_RECT_F text_render_row[3]{};
+    D2D1_RECT_F ui_font_size_card{};
+    D2D1_RECT_F ui_font_size_row[4]{};
     D2D1_RECT_F tray_icon_card{};
     D2D1_RECT_F tray_icon_row[3]{};
     D2D1_RECT_F language_card{};
@@ -1754,7 +1792,11 @@ struct SettingsLayout {
     D2D1_RECT_F hints_reset_row{};
     D2D1_RECT_F hints_reset_button{};
     D2D1_RECT_F blank_click_row{};
+    D2D1_RECT_F blank_click_choice[3]{};
     D2D1_RECT_F win_e_row{};
+    D2D1_RECT_F this_pc_row{};
+    D2D1_RECT_F explorer_windows_row{};
+    D2D1_RECT_F default_manager_row{};
     D2D1_RECT_F shell_tags_row{};
     D2D1_RECT_F change_tracking_row{}, change_days_row{}, change_days[3]{};
     D2D1_RECT_F search_pinyin_row{};
@@ -1780,6 +1822,7 @@ struct SettingsLayout {
     D2D1_RECT_F diagnostics_action[3]{};
     D2D1_RECT_F update_card{};
     D2D1_RECT_F update_action[2]{};
+    D2D1_RECT_F update_auto_row{};  // empty when this build has no updater
     D2D1_RECT_F about_action[2]{};
     D2D1_RECT_F release_card{};
     D2D1_RECT_F release_all{};
@@ -2065,9 +2108,15 @@ SettingsLayout MakeSettingsLayout(const WindowViewModel& vm, const D2D1_RECT_F& 
         const float download_w = std::min(available_width, label_btn_w(
             pulse::l10n::Get(pulse::l10n::StringId::DownloadUpdate)));
         const bool stack_updates = vm.settings_update_available && check_w + gap + download_w > available_width;
-        const float update_h = 174.0f * scale +
+        // The automatic-check switch sits between the status text and the buttons,
+        // like the performance switch in the diagnostics card.
+        const float auto_h = vm.settings_update_enabled ? 56.0f * scale : 0.0f;
+        const float update_h = 174.0f * scale + auto_h +
             (stack_updates ? 40.0f * scale : 0.0f);
         l.update_card = D2D1::RectF(card_left, y, card_right, y + update_h);
+        if (vm.settings_update_enabled)
+            l.update_auto_row = D2D1::RectF(card_left + 8.0f * scale, y + 106.0f * scale,
+                                            card_right - 8.0f * scale, y + 162.0f * scale);
         const float check_y = y + update_h - (stack_updates ? 88.0f : 48.0f) * scale;
         l.update_action[0] = D2D1::RectF(card_left + 16.0f * scale,
                                          check_y,

@@ -134,7 +134,7 @@ void FollowHeldRenames(const std::vector<EntryRename>& renames,
     if (renames.empty()) return;
     std::unordered_map<std::wstring, char, FoldedNameHash, FoldedNameEqual> present;
     present.reserve(fresh.size());
-    for (const auto& entry : fresh) present.emplace(entry.name, 0);
+    for (const auto& entry : fresh) present.emplace(entry.name, char{});
     const auto follow = [&](std::wstring& name) {
         if (name.empty() || present.find(name) != present.end()) return;
         // Newest rename first: a row renamed twice follows the latest name.
@@ -152,7 +152,7 @@ void PruneHeldRenames(std::vector<EntryRename>& renames, const std::vector<fs::D
     if (renames.empty()) return;
     std::unordered_map<std::wstring, char, FoldedNameHash, FoldedNameEqual> present;
     present.reserve(fresh.size());
-    for (const auto& entry : fresh) present.emplace(entry.name, 0);
+    for (const auto& entry : fresh) present.emplace(entry.name, char{});
     // A rename still pending leaves its old name on disk.
     renames.erase(std::remove_if(renames.begin(), renames.end(), [&](const EntryRename& rename) {
         return present.find(rename.old_name) == present.end() ||

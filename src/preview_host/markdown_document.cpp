@@ -3,13 +3,18 @@
 #include "../ipc/preview_protocol.h"
 #include <windows.h>
 #include "../../third_party/md4c/md4c.h"
+#include <cstdint>
+#include <algorithm>
 #include <string>
 #include <vector>
 
 namespace pulse::preview {
 namespace {
 
-enum : unsigned { kBold = 1, kItalic = 2, kCode = 4, kStrike = 8, kLink = 16, kImage = 32, kUnderline = 64 };
+enum : unsigned {
+    kBold = 1, kItalic = 2, kCode = 4, kStrike = 8, kLink = 16, kImage = 32,
+    kUnderline = 64, kMath = 128, kDisplayMath = 256
+};
 
 void AppendEscaped(std::wstring& out, const wchar_t* text, size_t size) {
     for (size_t i = 0; i < size; ++i) {
@@ -65,12 +70,115 @@ void AppendEntity(std::wstring& out, const wchar_t* text, size_t size) {
     out += e;
 }
 
+struct BackslashMath {
+    size_t start, end;
+    unsigned flags;
+};
+
+struct MathDiscovery {
+    const std::wstring& source;
+    std::vector<BackslashMath> ranges;
+    size_t pending = std::wstring::npos, total = 0;
+    wchar_t close = 0;
+    int excluded = 0;
+
+    bool HasQuoteContinuation(size_t start, size_t end) const {
+        for (size_t i = start; i < end; ++i) {
+            if (source[i] != L'\n' && source[i] != L'\r') continue;
+            while (i + 1 < end && (source[i + 1] == L' ' || source[i + 1] == L'\t')) ++i;
+            if (i + 1 < end && source[i + 1] == L'>') return true;
+        }
+        return false;
+    }
+
+    static int Block(MD_BLOCKTYPE, void*, void* user) {
+        static_cast<MathDiscovery*>(user)->pending = std::wstring::npos;
+        return 0;
+    }
+    static bool Excluded(MD_SPANTYPE type) {
+        return type == MD_SPAN_CODE || type == MD_SPAN_LATEXMATH ||
+               type == MD_SPAN_LATEXMATH_DISPLAY || type == MD_SPAN_IMG;
+    }
+    static int Enter(MD_SPANTYPE type, void*, void* user) {
+        auto& d = *static_cast<MathDiscovery*>(user);
+        if (type == MD_SPAN_A || type == MD_SPAN_WIKILINK) d.pending = std::wstring::npos;
+        if (Excluded(type)) { ++d.excluded; d.pending = std::wstring::npos; }
+        return 0;
+    }
+    static int Leave(MD_SPANTYPE type, void*, void* user) {
+        auto& d = *static_cast<MathDiscovery*>(user);
+        if (type == MD_SPAN_A || type == MD_SPAN_WIKILINK) d.pending = std::wstring::npos;
+        if (Excluded(type)) { --d.excluded; d.pending = std::wstring::npos; }
+        return 0;
+    }
+    static int Text(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, void* user) {
+        auto& d = *static_cast<MathDiscovery*>(user);
+        if (type == MD_TEXT_HTML || type == MD_TEXT_CODE) d.pending = std::wstring::npos;
+        if (type != MD_TEXT_NORMAL || d.excluded || d.ranges.size() >= 256) return 0;
+        const uintptr_t address = reinterpret_cast<uintptr_t>(text);
+        const uintptr_t begin = reinterpret_cast<uintptr_t>(d.source.data());
+        if (address < begin || address >= begin + d.source.size() * sizeof(wchar_t)) return 0;
+        const size_t first = (address - begin) / sizeof(wchar_t);
+        const size_t end = std::min(first + size, d.source.size());
+        for (size_t i = first; i < end; ++i) {
+            const wchar_t ch = d.source[i];
+            if (!i || d.source[i - 1] != L'\\' ||
+                (ch != L'(' && ch != L')' && ch != L'[' && ch != L']')) continue;
+            size_t slash = i;
+            while (slash && d.source[slash - 1] == L'\\') --slash;
+            if ((i - slash) % 2 == 0) continue;
+            if (ch == L'(' || ch == L'[') {
+                d.pending = i - 1;
+                d.close = ch == L'(' ? L')' : L']';
+            } else if (d.pending != std::wstring::npos && ch == d.close) {
+                const size_t length = i + 1 - d.pending;
+                if (length <= 4096 && d.total + length <= 65536 && d.ranges.size() < 256 &&
+                    !d.HasQuoteContinuation(d.pending, i + 1)) {
+                    d.ranges.push_back({d.pending, i + 1, ch == L')' ? kMath : kDisplayMath});
+                    d.total += length;
+                }
+                d.pending = std::wstring::npos;
+            }
+        }
+        return 0;
+    }
+};
+
+// Discover only delimiters md4c actually exposes as prose. The equal-length
+// masked second parse protects formula syntax while retaining Markdown context.
+std::vector<BackslashMath> PrepareBackslashMath(const std::wstring& source, std::wstring& masked) {
+    if (source.find(L"\\(") == std::wstring::npos && source.find(L"\\[") == std::wstring::npos) return {};
+    MathDiscovery d{source};
+    MD_PARSER parser{};
+    parser.flags = MD_DIALECT_GITHUB | MD_FLAG_LATEXMATHSPANS;
+    parser.enter_block = MathDiscovery::Block;
+    parser.leave_block = MathDiscovery::Block;
+    parser.enter_span = MathDiscovery::Enter;
+    parser.leave_span = MathDiscovery::Leave;
+    parser.text = MathDiscovery::Text;
+    if (md_parse(source.data(), static_cast<MD_SIZE>(source.size()), &parser, &d) != 0 || d.ranges.empty()) return {};
+    masked = source;
+    for (const auto& range : d.ranges) {
+        for (size_t i = range.start; i < range.end; ++i)
+            if (masked[i] != L'\r' && masked[i] != L'\n' && masked[i] != L' ' && masked[i] != L'\t') masked[i] = L'x';
+        // Unicode punctuation keeps emphasis flanking without creating a link
+        // destination after a preceding ']' (ASCII parentheses would do that).
+        masked[range.start] = masked[range.start + 1] = L'\xFF08';
+        masked[range.end - 2] = masked[range.end - 1] = L'\xFF09';
+    }
+    return std::move(d.ranges);
+}
+
 struct Builder {
     struct Run { size_t start, length; unsigned flags; std::wstring target; };
     struct OpenSpan { size_t start; unsigned flags; std::wstring target; };
     struct List { bool ordered; unsigned next; };
 
     std::wstring out;
+    const std::wstring* source = nullptr;
+    const std::wstring* original = nullptr;
+    std::vector<BackslashMath> backslash_math;
+    size_t math_index = 0, skip_math_until = 0;
     size_t limit = 0;
     bool full = false;
     // Current leaf block.
@@ -110,6 +218,12 @@ struct Builder {
         open = false;
         if (kind == L'c' || kind == L'x')
             while (!text.empty() && (text.back() == L'\n' || text.back() == L'\r')) text.pop_back();
+        if (kind == L'p' && runs.size() == 1 && runs.front().flags == kDisplayMath) {
+            const Run& run = runs.front();
+            const size_t first = text.find_first_not_of(L" \t\r\n");
+            const size_t last = text.find_last_not_of(L" \t\r\n");
+            if (first == run.start && last == run.start + run.length - 1) kind = L'm';
+        }
         std::wstring line = L"B\t";
         line += kind;
         line += L'\t';
@@ -201,7 +315,9 @@ int EnterSpan(MD_SPANTYPE type, void* detail, void* user) {
         span.flags = kImage;
         span.target = AttributeText(static_cast<const MD_SPAN_IMG_DETAIL*>(detail)->src);
         break;
-    case MD_SPAN_CODE: case MD_SPAN_LATEXMATH: case MD_SPAN_LATEXMATH_DISPLAY: span.flags = kCode; break;
+    case MD_SPAN_CODE: span.flags = kCode; break;
+    case MD_SPAN_LATEXMATH: span.flags = kMath; b.text += L'$'; break;
+    case MD_SPAN_LATEXMATH_DISPLAY: span.flags = kDisplayMath; b.text += L"$$"; break;
     case MD_SPAN_DEL: span.flags = kStrike; break;
     case MD_SPAN_U: span.flags = kUnderline; break;
     case MD_SPAN_WIKILINK:
@@ -219,6 +335,8 @@ int LeaveSpan(MD_SPANTYPE, void*, void* user) {
     if (b.spans.empty()) return 0;
     Builder::OpenSpan span = std::move(b.spans.back());
     b.spans.pop_back();
+    if (span.flags & kMath) b.text += L'$';
+    if (span.flags & kDisplayMath) b.text += L"$$";
     if ((span.flags & kImage) && b.text.size() == span.start) b.text += L"image";
     if (span.flags && b.text.size() > span.start)
         b.runs.push_back({span.start, b.text.size() - span.start, span.flags, std::move(span.target)});
@@ -228,7 +346,46 @@ int LeaveSpan(MD_SPANTYPE, void*, void* user) {
 int Text(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, void* user) {
     Builder& b = *static_cast<Builder*>(user);
     b.EnsureOpen();
+    if (!b.backslash_math.empty()) {
+        const uintptr_t address = reinterpret_cast<uintptr_t>(text);
+        const uintptr_t begin = reinterpret_cast<uintptr_t>(b.source->data());
+        if (address >= begin && address < begin + b.source->size() * sizeof(wchar_t)) {
+            size_t offset = (address - begin) / sizeof(wchar_t);
+            const size_t end = offset + size;
+            if (b.skip_math_until) {
+                offset = std::min(end, std::max(offset, b.skip_math_until));
+                if (end >= b.skip_math_until) b.skip_math_until = 0;
+            }
+            if (type == MD_TEXT_NORMAL) {
+                while (b.math_index < b.backslash_math.size() && b.backslash_math[b.math_index].start < end) {
+                    const auto& range = b.backslash_math[b.math_index++];
+                    if (range.start < offset) continue;
+                    b.text.append(b.source->data() + offset, range.start - offset);
+                    const size_t start = b.text.size();
+                    b.text.append(*b.original, range.start, range.end - range.start);
+                    b.runs.push_back({start, range.end - range.start, range.flags, {}});
+                    offset = std::min(end, range.end);
+                    if (range.end > end) b.skip_math_until = range.end;
+                }
+            }
+            text = b.source->data() + offset;
+            size = static_cast<MD_SIZE>(end - offset);
+            if (!size) return 0;
+        } else if (b.skip_math_until) return 0;
+    }
     switch (type) {
+    case MD_TEXT_LATEXMATH: {
+        // md4c substitutes a static space for a math span's line break.
+        // Keep the LaTeX line break for copy/search and unsupported-formula fallback.
+        const uintptr_t address = reinterpret_cast<uintptr_t>(text);
+        const uintptr_t begin = reinterpret_cast<uintptr_t>(b.source->data());
+        const uintptr_t end = begin + b.source->size() * sizeof(wchar_t);
+        if (size == 1 && text[0] == L' ' && (address < begin || address >= end))
+            b.text += L'\n';
+        else
+            b.text.append(text, size);
+        break;
+    }
     case MD_TEXT_NULLCHAR: b.text += L'\xFFFD'; break;
     case MD_TEXT_BR: b.text += L'\n'; break;
     case MD_TEXT_SOFTBR:
@@ -246,18 +403,22 @@ int Text(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, void* user) {
 bool AppendMarkdownBlocks(const std::wstring& markdown, std::wstring& payload, size_t limit,
                           int base_indent) {
     Builder b;
+    std::wstring masked;
+    b.backslash_math = PrepareBackslashMath(markdown, masked);
+    b.source = masked.empty() ? &markdown : &masked;
+    b.original = &markdown;
     b.out.swap(payload);
     b.limit = limit;
     b.base_indent = base_indent;
     MD_PARSER parser{};
     parser.abi_version = 0;
-    parser.flags = MD_DIALECT_GITHUB;
+    parser.flags = MD_DIALECT_GITHUB | MD_FLAG_LATEXMATHSPANS;
     parser.enter_block = EnterBlock;
     parser.leave_block = LeaveBlock;
     parser.enter_span = EnterSpan;
     parser.leave_span = LeaveSpan;
     parser.text = Text;
-    const bool parsed = md_parse(markdown.data(), static_cast<MD_SIZE>(markdown.size()), &parser, &b) == 0;
+    const bool parsed = md_parse(b.source->data(), static_cast<MD_SIZE>(b.source->size()), &parser, &b) == 0;
     b.Flush();
     payload.swap(b.out);
     return parsed && !b.full;
@@ -286,19 +447,23 @@ bool AppendMarkdownBlock(std::wstring& payload, size_t limit, wchar_t kind, cons
 
 bool MakeMarkdownDocument(const std::wstring& source, std::wstring& payload) {
     Builder b;
+    std::wstring masked;
+    b.original = &source;
     const size_t source_cost = source.size() * 2 + 16;
     if (source_cost + 1024 >= ipc::kPreviewMaxArchiveChars) return false;
+    b.backslash_math = PrepareBackslashMath(source, masked);
+    b.source = masked.empty() ? &source : &masked;
     b.limit = ipc::kPreviewMaxArchiveChars - source_cost - 64;
     b.out = L"PULSEMD\t1\n";
     MD_PARSER parser{};
     parser.abi_version = 0;
-    parser.flags = MD_DIALECT_GITHUB;
+    parser.flags = MD_DIALECT_GITHUB | MD_FLAG_LATEXMATHSPANS;
     parser.enter_block = EnterBlock;
     parser.leave_block = LeaveBlock;
     parser.enter_span = EnterSpan;
     parser.leave_span = LeaveSpan;
     parser.text = Text;
-    if (md_parse(source.data(), static_cast<MD_SIZE>(source.size()), &parser, &b) != 0) return false;
+    if (md_parse(b.source->data(), static_cast<MD_SIZE>(b.source->size()), &parser, &b) != 0) return false;
     b.Flush();
     b.out += L"S\t";
     AppendEscaped(b.out, source.data(), source.size());

@@ -241,6 +241,8 @@ inline std::wstring CatalogKey(std::wstring_view text, bool is_flyout) {
 inline bool IsOpenWithPickerText(std::wstring_view text) {
     const std::wstring t = ToLowerVerb(CleanMenuText(text));
     return t.find(L"打开方式") != std::wstring::npos ||
+           t.find(L"開啟檔案") != std::wstring::npos ||          // zh-TW Windows
+           t.find(L"選擇其他應用程式") != std::wstring::npos ||
            t.find(L"choose default") != std::wstring::npos ||
            t.find(L"open with\u2026") != std::wstring::npos ||
            t.find(L"open with...") != std::wstring::npos;
@@ -250,6 +252,9 @@ inline bool IsOpenWithMruText(std::wstring_view text) {
     if (IsOpenWithPickerText(text)) return false;
     const std::wstring t = ToLowerVerb(CleanMenuText(text));
     if (t.size() >= 2 && t[0] == L'用' && t.find(L"打开") != std::wstring::npos)
+        return true;
+    if (t.size() >= 2 && (t[0] == L'以' || t.find(L"使用") == 0) &&
+        t.find(L"開啟") != std::wstring::npos)  // zh-TW: 以 X 開啟 / 使用 X 開啟
         return true;
     if (t.find(L"open with ") == 0 || t.find(L"edit with ") == 0) return true;
     return false;
@@ -284,17 +289,23 @@ inline bool IsCompressVendorFlyout(std::wstring_view text) {
            MenuTextContainsI(text, L"winrar") ||
            MenuTextContainsI(text, L"nanazip") ||
            MenuTextContainsI(text, L"peazip") ||
-           MenuTextContainsI(text, L"压缩");
+           MenuTextContainsI(text, L"压缩") ||
+           MenuTextContainsI(text, L"壓縮");
 }
 
 inline bool IsCompressTopLevel(std::wstring_view text) {
     const std::wstring t = ToLowerVerb(CleanMenuText(text));
     if (t.find(L"压缩为") != std::wstring::npos) return true;
     if (t.find(L"新建压缩包") != std::wstring::npos) return true;
+    if (t.find(L"壓縮為") != std::wstring::npos || t.find(L"壓縮成") != std::wstring::npos ||
+        t.find(L"壓縮至") != std::wstring::npos || t.find(L"加入壓縮檔") != std::wstring::npos)
+        return true;
     if (t.find(L"compress to") != std::wstring::npos) return true;
     if (t.find(L"add to archive") != std::wstring::npos) return true;
     if (t.find(L"add to \"") != std::wstring::npos) return true;
     if (t.find(L"添加到\"") != std::wstring::npos || t.find(L"添加到「") != std::wstring::npos)
+        return true;
+    if (t.find(L"加入到\"") != std::wstring::npos || t.find(L"加入到「") != std::wstring::npos)
         return true;
     return false;
 }
@@ -305,15 +316,16 @@ inline CtxMenuCategory ClassifyExplorerItem(std::wstring_view verb,
     const std::wstring v = ToLowerVerb(verb);
     const std::wstring t = ToLowerVerb(CleanMenuText(text));
 
-    if (v == L"print" || t == L"打印" || t == L"print" ||
-        t.find(L"打印(") == 0 || t.find(L"print(") == 0)
+    if (v == L"print" || t == L"打印" || t == L"列印" || t == L"print" ||
+        t.find(L"打印(") == 0 || t.find(L"列印(") == 0 || t.find(L"print(") == 0)
         return CtxMenuCategory::Print;
 
     if (v == L"sendto" || v == L"send to" ||
         v.find(L"share") != std::wstring::npos ||
         t.find(L"发送到") != std::wstring::npos ||
         t.find(L"发送给") != std::wstring::npos ||
-        t == L"分享" || t.find(L"share") != std::wstring::npos)
+        t.find(L"傳送到") != std::wstring::npos ||
+        t == L"分享" || t == L"共用" || t.find(L"share") != std::wstring::npos)
         return CtxMenuCategory::Share;
     if (t.find(L"泛泰") != std::wstring::npos || t.find(L"快传") != std::wstring::npos)
         return CtxMenuCategory::Share;
@@ -324,16 +336,19 @@ inline CtxMenuCategory ClassifyExplorerItem(std::wstring_view verb,
     if (v.find(L"wallpaper") != std::wstring::npos ||
         t.find(L"桌面背景") != std::wstring::npos ||
         t.find(L"壁纸") != std::wstring::npos ||
+        t.find(L"桌布") != std::wstring::npos ||
         t.find(L"wallpaper") != std::wstring::npos)
         return CtxMenuCategory::Wallpaper;
 
     if (v.find(L"rotate") != std::wstring::npos ||
         t.find(L"旋转") != std::wstring::npos ||
+        t.find(L"旋轉") != std::wstring::npos ||
         t.find(L"rotate") != std::wstring::npos)
         return CtxMenuCategory::Rotate;
 
     if (v == L"link" || v == L"createlink" ||
         t.find(L"创建快捷方式") != std::wstring::npos ||
+        t.find(L"建立捷徑") != std::wstring::npos ||
         t.find(L"create shortcut") != std::wstring::npos)
         return CtxMenuCategory::Shortcut;
 
@@ -342,9 +357,14 @@ inline CtxMenuCategory ClassifyExplorerItem(std::wstring_view verb,
         return CtxMenuCategory::OpenWith;
 
     if (t.find(L"以前的版本") != std::wstring::npos ||
+        t.find(L"還原舊版") != std::wstring::npos ||
         t.find(L"previous version") != std::wstring::npos ||
         t.find(L"始终脱机") != std::wstring::npos ||
         t.find(L"脱机可用") != std::wstring::npos ||
+        t.find(L"離線使用") != std::wstring::npos ||
+        t.find(L"數位簽章") != std::wstring::npos ||
+        t.find(L"相容性疑難排解") != std::wstring::npos ||
+        t.find(L"我的最愛") != std::wstring::npos ||
         t.find(L"always available offline") != std::wstring::npos ||
         t.find(L"数字签名") != std::wstring::npos ||
         t.find(L"digital signature") != std::wstring::npos ||

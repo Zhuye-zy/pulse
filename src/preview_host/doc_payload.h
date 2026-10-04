@@ -30,7 +30,7 @@ class DocPayload {
 public:
     explicit DocPayload(size_t limit);
 
-    bool full() const noexcept { return full_; }
+    bool full() const noexcept { return full_ || text_truncated_; }
     size_t blocks() const noexcept { return blocks_; }  // B records written
     std::wstring& str() noexcept { return out_; }
 
@@ -58,6 +58,7 @@ private:
     std::wstring out_;
     size_t limit_;
     bool full_ = false;
+    bool text_truncated_ = false;
     size_t blocks_ = 0;
     bool open_ = false;
     wchar_t kind_ = L'p';

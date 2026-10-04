@@ -36,16 +36,17 @@ const wchar_t* KindId(SearchKind kind) {
 SearchKind ParseKindId(std::wstring_view raw) {
     const std::wstring s = Fold(raw);
     if (s.empty() || s == L"any" || s == L"all" || s == L"任意") return SearchKind::Any;
-    if (s == L"folder" || s == L"folders" || s == L"dir" || s == L"文件夹") return SearchKind::Folder;
-    if (s == L"document" || s == L"documents" || s == L"doc" || s == L"文档") return SearchKind::Document;
-    if (s == L"image" || s == L"images" || s == L"picture" || s == L"pic" || s == L"图片")
+    if (s == L"folder" || s == L"folders" || s == L"dir" || s == L"文件夹" || s == L"資料夾") return SearchKind::Folder;
+    if (s == L"document" || s == L"documents" || s == L"doc" || s == L"文档" || s == L"文件") return SearchKind::Document;
+    if (s == L"image" || s == L"images" || s == L"picture" || s == L"pic" || s == L"图片" || s == L"圖片")
         return SearchKind::Image;
-    if (s == L"video" || s == L"videos" || s == L"movie" || s == L"视频") return SearchKind::Video;
-    if (s == L"audio" || s == L"music" || s == L"音频") return SearchKind::Audio;
-    if (s == L"archive" || s == L"archives" || s == L"zip" || s == L"压缩" || s == L"压缩包")
+    if (s == L"video" || s == L"videos" || s == L"movie" || s == L"视频" || s == L"影片") return SearchKind::Video;
+    if (s == L"audio" || s == L"music" || s == L"音频" || s == L"音訊") return SearchKind::Audio;
+    if (s == L"archive" || s == L"archives" || s == L"zip" || s == L"压缩" || s == L"压缩包" ||
+        s == L"壓縮" || s == L"壓縮檔")
         return SearchKind::Archive;
-    if (s == L"code" || s == L"source" || s == L"代码") return SearchKind::Code;
-    if (s == L"custom" || s == L"自定义") return SearchKind::Custom;
+    if (s == L"code" || s == L"source" || s == L"代码" || s == L"程式碼") return SearchKind::Code;
+    if (s == L"custom" || s == L"自定义" || s == L"自訂") return SearchKind::Custom;
     return SearchKind::Custom;
 }
 

@@ -2,16 +2,16 @@
 #include "context_menu.h"
 #include "../fs/fs_enum.h"
 #include "../ops/clipboard.h"
+#include "../common/localization.h"
 
 namespace pulse {
 
-void ShowBreadcrumbMenu(AppState& s, std::wstring path, POINT screen_pt) {
-    if (path.empty() || !EnsureMenu(s)) return;
-    s.context_menu.Close();
-    const bool filesystem = !fs::IsVirtualPath(path);
-    // Keep the clicked path across TrackPopup's nested message loop. Selection
-    // commands target file rows and must not be used for breadcrumb ancestors.
-    const int command = s.menu->TrackPopup(screen_pt, app::BuildBreadcrumbMenu(filesystem));
+namespace {
+
+constexpr int kHideCloud = 32400;
+
+// Runs a BuildBreadcrumbMenu command on `path` (a breadcrumb or a sidebar row).
+void RunPathCommand(AppState& s, const std::wstring& path, bool filesystem, int command) {
     const std::wstring shell_path = ClipboardPath(path);
     switch (command) {
     case app::CmdOpenInNewTab:
@@ -36,6 +36,43 @@ void ShowBreadcrumbMenu(AppState& s, std::wstring path, POINT screen_pt) {
         break;
     }
     InvalidateRect(s.hwnd, nullptr, FALSE);
+}
+
+} // namespace
+
+void ShowBreadcrumbMenu(AppState& s, std::wstring path, POINT screen_pt) {
+    if (path.empty() || !EnsureMenu(s)) return;
+    s.context_menu.Close();
+    const bool filesystem = !fs::IsVirtualPath(path);
+    // Keep the clicked path across TrackPopup's nested message loop. Selection
+    // commands target file rows and must not be used for breadcrumb ancestors.
+    const int command = s.menu->TrackPopup(screen_pt, app::BuildBreadcrumbMenu(filesystem));
+    RunPathCommand(s, path, filesystem, command);
+}
+
+// #80: OneDrive rows form a header-less section, so the row carries what a
+// header menu would: the usual folder commands, then hiding OneDrive. The toast
+// says where to bring it back.
+void ShowCloudPlaceMenu(AppState& s, const std::wstring& path, POINT screen_pt) {
+    if (!EnsureMenu(s)) return;
+    s.context_menu.Close();
+    const bool filesystem = !path.empty() && !fs::IsVirtualPath(path);
+    std::vector<ui::FluentMenuItem> items;
+    if (!path.empty()) items = app::BuildBreadcrumbMenu(filesystem);
+    if (!items.empty()) items.back().separator_after = true;
+    ui::FluentMenuItem hide;
+    hide.command = kHideCloud;
+    hide.text = l10n::Get(l10n::StringId::SidebarHideCloud);
+    items.push_back(std::move(hide));
+    const int command = s.menu->TrackPopup(screen_pt, std::move(items));
+    if (command == kHideCloud) {
+        s.sidebarHiddenMask |= 1u << static_cast<int>(app::SidebarSectionId::Cloud);
+        s.notification_toast.Show(s.hwnd, L"OneDrive",
+            l10n::Get(l10n::StringId::SidebarCloudHiddenHint), false);
+        InvalidateRect(s.hwnd, nullptr, FALSE);
+        return;
+    }
+    if (!path.empty()) RunPathCommand(s, path, filesystem, command);
 }
 
 } // namespace pulse

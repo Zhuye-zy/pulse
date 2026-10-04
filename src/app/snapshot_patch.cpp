@@ -25,19 +25,29 @@ int FindName(const std::vector<fs::DirEntry>& entries, const std::wstring& name)
     return -1;
 }
 
+bool NeedsLinkResolution(const fs::DirEntry& entry) {
+    if (fs::ClassifyLink(entry.attrs, entry.reparse_tag) != fs::LinkKind::None) return true;
+    if (entry.is_dir || entry.name.size() < 4) return false;
+    const wchar_t* suffix = entry.name.c_str() + entry.name.size() - 4;
+    return _wcsicmp(suffix, L".lnk") == 0 || _wcsicmp(suffix, L".url") == 0;
+}
+
 } // namespace
 
 bool FillDirEntry(const std::wstring& dir, const std::wstring& name, fs::DirEntry& out) {
     if (name.empty() || name.find_first_of(L"\\/") != std::wstring::npos) return false;
     const std::wstring full = fs::NormalizePath(ChildPath(dir, name));
-    WIN32_FILE_ATTRIBUTE_DATA data{};
-    if (!GetFileAttributesExW(full.c_str(), GetFileExInfoStandard, &data))
-        return false;
+    WIN32_FIND_DATAW data{};
+    const HANDLE find = FindFirstFileExW(full.c_str(), FindExInfoBasic, &data,
+        FindExSearchNameMatch, nullptr, 0);
+    if (find == INVALID_HANDLE_VALUE) return false;
+    FindClose(find);
     out = fs::DirEntry{};
     out.name = name;
     out.attrs = data.dwFileAttributes;
     out.is_dir = (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
     out.is_reparse = (data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+    out.reparse_tag = out.is_reparse ? data.dwReserved0 : 0;
     out.cloud_recall = (data.dwFileAttributes & FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS) != 0;
     out.size = (static_cast<uint64_t>(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
     out.mtime = data.ftLastWriteTime;
@@ -60,11 +70,14 @@ NotifyPatch ApplyDirNotify(std::vector<fs::DirEntry>& entries, const std::wstrin
 
     if (event.action == FILE_ACTION_RENAMED_NEW_NAME) {
         const int at = FindName(entries, event.old_name.empty() ? event.name : event.old_name);
+        if (at >= 0 && NeedsLinkResolution(entries[static_cast<size_t>(at)]))
+            return NotifyPatch::NeedFullEnum;
         fs::DirEntry entry;
         if (!FillDirEntry(folder, event.name, entry)) {
             if (at >= 0) entries.erase(entries.begin() + at);
             return NotifyPatch::Applied;
         }
+        if (NeedsLinkResolution(entry)) return NotifyPatch::NeedFullEnum;
         // The renamed row keeps its place (#13); a row already holding the
         // new name gives way to it.
         int slot = at;
@@ -82,13 +95,16 @@ NotifyPatch ApplyDirNotify(std::vector<fs::DirEntry>& entries, const std::wstrin
     }
 
     if (event.action == FILE_ACTION_ADDED || event.action == FILE_ACTION_MODIFIED) {
+        const int at = FindName(entries, event.name);
+        if (at >= 0 && NeedsLinkResolution(entries[static_cast<size_t>(at)]))
+            return NotifyPatch::NeedFullEnum;
         fs::DirEntry entry;
         if (!FillDirEntry(folder, event.name, entry)) {
-            const int at = FindName(entries, event.name);
             if (at >= 0) entries.erase(entries.begin() + at);
             return NotifyPatch::Applied;
         }
-        PlaceEntryHeld(entries, FindName(entries, event.name), std::move(entry), col, sort_dir);
+        if (NeedsLinkResolution(entry)) return NotifyPatch::NeedFullEnum;
+        PlaceEntryHeld(entries, at, std::move(entry), col, sort_dir);
         return NotifyPatch::Applied;
     }
 
@@ -123,21 +139,44 @@ struct FoldedNameEqual {
 NotifyPatch ApplyDirNotifyBatch(std::vector<fs::DirEntry>& entries, const std::wstring& folder,
                                 const std::vector<fs::DirNotifyEvent>& events,
                                 ui::SortColumn col, ui::SortDirection sort_dir) {
-    constexpr size_t kSequentialLimit = 4;
-    if (events.size() <= kSequentialLimit) {
-        for (const auto& event : events) {
-            if (ApplyDirNotify(entries, folder, event, col, sort_dir) == NotifyPatch::NeedFullEnum)
-                return NotifyPatch::NeedFullEnum;
-        }
-        return NotifyPatch::Applied;
-    }
-
+    if (events.empty()) return NotifyPatch::Applied;
     for (const auto& event : events) {
         if (event.name.empty() || event.name.find_first_of(L"\\/") != std::wstring::npos)
             return NotifyPatch::NeedFullEnum;
         if (event.action != FILE_ACTION_REMOVED && event.action != FILE_ACTION_RENAMED_NEW_NAME &&
             event.action != FILE_ACTION_ADDED && event.action != FILE_ACTION_MODIFIED)
             return NotifyPatch::NeedFullEnum;
+    }
+
+    constexpr size_t kNone = static_cast<size_t>(-1);
+    std::unordered_map<std::wstring, size_t, FoldedNameHash, FoldedNameEqual> where;
+    where.reserve(entries.size() + events.size());
+    for (size_t i = 0; i < entries.size(); ++i) where.emplace(entries[i].name, i);
+    const auto find = [&](const std::wstring& name) {
+        const auto it = where.find(name);
+        return it == where.end() ? kNone : it->second;
+    };
+    // Reuse each stat during replay. Preflight before moving entries so a link
+    // refresh request leaves the caller's entire snapshot untouched.
+    std::unordered_map<std::wstring, std::optional<fs::DirEntry>> stats;
+    const auto stat = [&](const std::wstring& name) -> const std::optional<fs::DirEntry>& {
+        auto it = stats.find(name);
+        if (it == stats.end()) {
+            fs::DirEntry entry;
+            std::optional<fs::DirEntry> result;
+            if (FillDirEntry(folder, name, entry)) result = std::move(entry);
+            it = stats.emplace(name, std::move(result)).first;
+        }
+        return it->second;
+    };
+    for (const auto& event : events) {
+        if (event.action == FILE_ACTION_REMOVED) continue;
+        const auto& old_name = event.action == FILE_ACTION_RENAMED_NEW_NAME && !event.old_name.empty()
+            ? event.old_name : event.name;
+        const size_t at = find(old_name);
+        if (at != kNone && NeedsLinkResolution(entries[at])) return NotifyPatch::NeedFullEnum;
+        const auto& entry = stat(event.name);
+        if (entry && NeedsLinkResolution(*entry)) return NotifyPatch::NeedFullEnum;
     }
 
     // Replays the per-event rules on slots instead of a vector: rows keep
@@ -153,14 +192,6 @@ NotifyPatch ApplyDirNotifyBatch(std::vector<fs::DirEntry>& entries, const std::w
     slots.reserve(entries.size() + events.size());
     for (auto& entry : entries) slots.push_back({std::move(entry), true});
     const size_t original = slots.size();
-    constexpr size_t kNone = static_cast<size_t>(-1);
-    std::unordered_map<std::wstring, size_t, FoldedNameHash, FoldedNameEqual> where;
-    where.reserve(slots.size() + events.size());
-    for (size_t i = 0; i < slots.size(); ++i) where.emplace(slots[i].entry.name, i);
-    const auto find = [&](const std::wstring& name) {
-        const auto it = where.find(name);
-        return it == where.end() ? kNone : it->second;
-    };
     const auto drop = [&](size_t slot) {
         if (slot == kNone) return;
         where.erase(slots[slot].entry.name);
@@ -177,19 +208,6 @@ NotifyPatch ApplyDirNotifyBatch(std::vector<fs::DirEntry>& entries, const std::w
         slots.push_back({std::move(entry), true});
         where[slots.back().entry.name] = slots.size() - 1;
     };
-    // Disk is stat'ed once per spelling; every event for it sees the same state.
-    std::unordered_map<std::wstring, std::optional<fs::DirEntry>> stats;
-    const auto stat = [&](const std::wstring& name) -> const std::optional<fs::DirEntry>& {
-        auto it = stats.find(name);
-        if (it == stats.end()) {
-            fs::DirEntry entry;
-            std::optional<fs::DirEntry> result;
-            if (FillDirEntry(folder, name, entry)) result = std::move(entry);
-            it = stats.emplace(name, std::move(result)).first;
-        }
-        return it->second;
-    };
-
     for (const auto& event : events) {
         if (event.action == FILE_ACTION_REMOVED) {
             drop(find(event.name));

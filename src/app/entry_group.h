@@ -109,7 +109,14 @@ class FolderGroupPrefs {
 public:
     std::optional<GroupBy> Find(const std::wstring& path) const;
     bool Set(const std::wstring& path, GroupBy by);
-    void Clear() { groups_.clear(); }
+    // Grouping a view uses: its saved choice, else the "apply to all" default
+    // for real folders, else DefaultGroupFor (Downloads, Recent, recycle bin).
+    GroupBy Resolve(const std::wstring& path) const;
+    // "Apply to all folders" (#75): `by` becomes every real folder's grouping and
+    // per-folder choices go. Virtual views (Recent, search, tags, recycle bin) keep theirs.
+    void ApplyToAll(GroupBy by);
+    std::optional<GroupBy> Default() const { return default_; }
+    void Clear() { groups_.clear(); default_.reset(); }
     void AppendJson(std::wstring& out) const;
     void ReadJson(const std::wstring& json);
 
@@ -118,6 +125,7 @@ private:
         bool operator()(const std::wstring& a, const std::wstring& b) const;
     };
     std::map<std::wstring, GroupBy, PathLess> groups_;
+    std::optional<GroupBy> default_;
 };
 
 // Default when a folder has no saved choice: Date for Downloads, Recent and

@@ -34,6 +34,16 @@ inline D2D1_COLOR_F BlendOver(D2D1_COLOR_F src, D2D1_COLOR_F dst) noexcept {
     return out;
 }
 
+// Per-channel mix of two colors; t = 0 gives a, 1 gives b. The result is opaque.
+inline D2D1_COLOR_F MixColor(D2D1_COLOR_F a, D2D1_COLOR_F b, float t) noexcept {
+    D2D1_COLOR_F out;
+    out.r = a.r + (b.r - a.r) * t;
+    out.g = a.g + (b.g - a.g) * t;
+    out.b = a.b + (b.b - a.b) * t;
+    out.a = 1.0f;
+    return out;
+}
+
 struct AccentShades {
     D2D1_COLOR_F dark3;
     D2D1_COLOR_F dark2;
@@ -116,6 +126,12 @@ struct Theme {
     // Selection in a split pane that does not have focus: neutral, so only the
     // focused pane carries the accent.
     D2D1_COLOR_F fill_selected_inactive;
+    // File list selection in the focused pane (#78): an accent gradient that is
+    // strongest beside the indicator bar and fades toward the row's right edge,
+    // plus the stroke for Settings > File list > Outline selected items.
+    D2D1_COLOR_F list_selected_start;
+    D2D1_COLOR_F list_selected_end;
+    D2D1_COLOR_F list_selected_outline;
     D2D1_COLOR_F fill_input;
     D2D1_COLOR_F fill_input_hover;
     D2D1_COLOR_F fill_input_focus;
@@ -245,6 +261,36 @@ inline bool IsHighContrast() noexcept {
     return false;
 }
 
+// Text boxes in high contrast use the system window colors, like the rest of the
+// high-contrast theme; otherwise the window's own colors.
+inline COLORREF HcEditText(COLORREF themed) noexcept {
+    return IsHighContrast() ? GetSysColor(COLOR_WINDOWTEXT) : themed;
+}
+
+inline COLORREF HcEditBack(COLORREF themed) noexcept {
+    return IsHighContrast() ? GetSysColor(COLOR_WINDOW) : themed;
+}
+
+// WM_CTLCOLOREDIT brush: the system window brush in high contrast (system-owned,
+// never deleted; follows a high-contrast switch while open), else `themed`.
+inline HBRUSH EditBackBrush(HBRUSH themed) noexcept {
+    return IsHighContrast() ? GetSysColorBrush(COLOR_WINDOW) : themed;
+}
+
+// The common light/dark text-box pair.
+inline COLORREF EditTextColor(bool dark) noexcept {
+    return HcEditText(dark ? RGB(255, 255, 255) : RGB(26, 26, 26));
+}
+
+inline COLORREF EditBackColor(bool dark) noexcept {
+    return HcEditBack(dark ? RGB(30, 30, 30) : RGB(255, 255, 255));
+}
+
+inline D2D1_COLOR_F ColorFromRef(COLORREF color) noexcept {
+    return D2D1::ColorF(GetRValue(color) / 255.0f, GetGValue(color) / 255.0f,
+                        GetBValue(color) / 255.0f);
+}
+
 inline void UpdateWindowTheme(HWND hwnd, bool dark) noexcept {
     BOOL darkValue = dark ? TRUE : FALSE;
     DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkValue, sizeof(darkValue));
@@ -273,6 +319,12 @@ inline Theme MakeTheme(bool dark, D2D1_COLOR_F accent) noexcept {
         t.fill_pressed = WithAlpha(HexColor(0xFFFFFF), 0.06f);
         t.fill_selected = WithAlpha(accent, 0.15f);
         t.fill_selected_inactive = WithAlpha(HexColor(0xFFFFFF), 0.08f);
+        // Lightened first: a dark or saturated accent at a plain alpha came out
+        // darker than the white hover wash, so selected rows blended in (#78).
+        const D2D1_COLOR_F lifted = MixColor(accent, HexColor(0xFFFFFF), 0.25f);
+        t.list_selected_start = WithAlpha(lifted, 0.45f);
+        t.list_selected_end = WithAlpha(lifted, 0.12f);
+        t.list_selected_outline = MixColor(accent, HexColor(0xFFFFFF), 0.35f);
         t.fill_input = WithAlpha(HexColor(0xFFFFFF), 0.0605f);
         t.fill_input_hover = WithAlpha(HexColor(0xFFFFFF), 0.0837f);
         t.fill_input_focus = HexColor(0x1E1E1E);
@@ -311,6 +363,9 @@ inline Theme MakeTheme(bool dark, D2D1_COLOR_F accent) noexcept {
         t.fill_pressed = WithAlpha(HexColor(0x527D70), 0.09f);
         t.fill_selected = WithAlpha(accent, 0.095f);
         t.fill_selected_inactive = WithAlpha(HexColor(0x71877B), 0.075f);
+        t.list_selected_start = WithAlpha(accent, 0.30f);
+        t.list_selected_end = WithAlpha(accent, 0.08f);
+        t.list_selected_outline = WithAlpha(accent, 1.0f);
         t.fill_input = WithAlpha(HexColor(0xFFFFFF), 0.90f);
         t.fill_input_hover = HexColor(0xFFFFFF);
         t.fill_input_focus = HexColor(0xFFFFFF);
@@ -363,6 +418,9 @@ inline Theme MakeHighContrastTheme() noexcept {
     t.fill_pressed = sys(COLOR_HIGHLIGHT);
     t.fill_selected = sys(COLOR_HIGHLIGHT);
     t.fill_selected_inactive = sys(COLOR_HIGHLIGHT);
+    t.list_selected_start = t.fill_selected;
+    t.list_selected_end = t.fill_selected;
+    t.list_selected_outline = sys(COLOR_HIGHLIGHTTEXT);
     t.fill_input = sys(COLOR_WINDOW);
     t.fill_input_hover = sys(COLOR_WINDOW);
     t.fill_input_focus = sys(COLOR_WINDOW);

@@ -1497,7 +1497,21 @@ bool ContentIndex::SearchTask(const ContentSearchRequest& request, const std::at
     // Changed-file tasks already have a bounded candidate list. Reading the
     // full old cache before filtering those paths made every delta pay the
     // startup cost of a whole search. Read those live files directly instead.
-    if (request.candidate_paths.empty()) try {
+    bool compatible_cache = false;
+    {
+        sqlite3* cache_db = nullptr;
+        if (Open(impl_->path, &cache_db, true)) {
+            const auto cached_config = ReadConfig(cache_db);
+            compatible_cache = cached_config.default_encoding == config.default_encoding &&
+                std::all_of(config.roots.begin(), config.roots.end(), [&](const auto& root) {
+                    return std::any_of(cached_config.roots.begin(), cached_config.roots.end(), [&](const auto& cached) {
+                        return Same(root.path, cached.path) && root.encoding == cached.encoding;
+                    });
+                });
+            sqlite3_close(cache_db);
+        }
+    }
+    if (request.candidate_paths.empty() && compatible_cache) try {
         read_slot = std::make_unique<ReadSlot>(impl_->path, &cancel);
         sqlite3* db = nullptr;
         struct Close { sqlite3*& db; ~Close() { if (db) { Exec(db,"ROLLBACK"); sqlite3_close(db); } } } close{db};

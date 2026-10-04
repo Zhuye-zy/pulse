@@ -124,6 +124,41 @@ void VisitAncestors(const ChangeRecord& event, Visitor visit) {
     walk(current, false);
     if (!event.old_path.empty()) walk(Normalize(event.old_path), true);
 }
+template <class Visitor>
+void VisitSummaryAncestors(const ChangeRecord& event, Visitor visit) {
+    if (event.kind != ChangeKind::Renamed || event.old_path.empty()) {
+        VisitAncestors(event, [&](const std::wstring& path) { visit(path, event.kind); });
+        return;
+    }
+    const auto current = Normalize(event.path), previous = Normalize(event.old_path);
+    auto under = [](std::wstring_view file, std::wstring_view folder) {
+        return !folder.empty() && (file == folder ||
+            (file.size() > folder.size() && file.compare(0, folder.size(), folder) == 0 &&
+             (folder.back() == L'\\' || file[folder.size()] == L'\\')));
+    };
+    const bool moved = std::wstring_view(current).substr(0, current.find_last_of(L'\\')) !=
+        std::wstring_view(previous).substr(0, previous.find_last_of(L'\\'));
+    auto walk = [&](std::wstring path, bool old) {
+        auto emit = [&] {
+            // The current branch already visited all shared ancestors. Compare
+            // normalized paths once per ancestor without copying the event.
+            if (old && under(current, path)) return;
+            const auto kind = old ? ChangeKind::MovedOut :
+                (!under(previous, path) || moved ? ChangeKind::MovedIn : ChangeKind::Renamed);
+            visit(path, kind);
+        };
+        if (path.empty()) return;
+        if (event.is_dir) emit();
+        while (path.size() > 3) {
+            const auto slash = path.find_last_of(L'\\');
+            if (slash == std::wstring::npos || slash < 2) break;
+            path.resize(slash == 2 && path[1] == L':' ? 3 : slash);
+            emit();
+        }
+    };
+    walk(current, false);
+    if (!event.old_path.empty()) walk(previous, true);
+}
 std::wstring File(const std::wstring& dir, std::wstring owner) {
     for (auto& c : owner) if (!iswalnum(c) && c != L'-') c = L'_';
     return dir + L"\\changes-" + owner + L".bin";
@@ -387,8 +422,7 @@ ChangeResponse ChangeTracker::Summaries(const std::wstring& owner, const std::ve
             rollups.Reset();
             for (size_t index = chain.first; index != SIZE_MAX; index = next[index]) {
                 const auto& event = j.records[index];
-                VisitAncestors(event, [&](const std::wstring& ancestor) {
-                    const auto kind = event.kind == ChangeKind::Renamed ? Relative(event, ancestor).kind : event.kind;
+                VisitSummaryAncestors(event, [&](const std::wstring& ancestor, ChangeKind kind) {
                     rollups.Add(j.summaries[ancestor], kind, event.time, Priority(kind));
                 });
             }

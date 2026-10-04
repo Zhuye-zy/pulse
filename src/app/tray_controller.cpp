@@ -19,6 +19,7 @@ void TrayController::Attach(HWND hwnd, HINSTANCE instance) {
 
 void TrayController::Detach() {
     SetVisible(false);
+    restore_maximized_ = false;
     hwnd_ = nullptr;
     instance_ = nullptr;
 }
@@ -40,6 +41,7 @@ NOTIFYICONDATAW TrayController::IconData(UINT flags) const {
 
 bool TrayController::SetVisible(bool visible) {
     if (!hwnd_) return false;
+    wanted_visible_ = visible;
     if (visible) {
         if (icon_added_) return true;
         auto data = IconData(NIF_MESSAGE | NIF_ICON | NIF_TIP);
@@ -55,17 +57,36 @@ bool TrayController::SetVisible(bool visible) {
     return true;
 }
 
-void TrayController::HideWindow() {
+void TrayController::HideWindow(bool show_icon) {
     if (!hwnd_) return;
-    SetVisible(true);
+    SetVisible(show_icon);
     ShowWindow(hwnd_, SW_HIDE);
 }
 
 void TrayController::RestoreWindow() {
     if (!hwnd_) return;
     if (before_restore_ && !IsWindowVisible(hwnd_)) before_restore_();
-    ShowWindow(hwnd_, IsIconic(hwnd_) ? SW_RESTORE : SW_SHOW);
+    ShowWindow(hwnd_, IsIconic(hwnd_) ? SW_RESTORE : restore_maximized_ ? SW_SHOWMAXIMIZED : SW_SHOW);
+    restore_maximized_ = false;
     SetForegroundWindow(hwnd_);
+}
+
+bool TrayController::StartHidden(bool maximized, bool show_icon) {
+    if (!hwnd_) return false;
+    if (show_icon && !SetVisible(true) && FindWindowW(L"Shell_TrayWnd", nullptr)) return false;
+    restore_maximized_ = maximized;
+    ShowWindow(hwnd_, SW_HIDE);
+    return true;
+}
+
+UINT TrayController::TaskbarCreatedMessage() {
+    static const UINT message = RegisterWindowMessageW(L"TaskbarCreated");
+    return message;
+}
+
+void TrayController::HandleTaskbarCreated() {
+    icon_added_ = false;
+    if (wanted_visible_) SetVisible(true);
 }
 
 TrayController::CallbackResult TrayController::HandleCallback(LPARAM event) {

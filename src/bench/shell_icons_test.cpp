@@ -1,7 +1,65 @@
 #include "../ui/shell_icons.h"
+#include "../ui/thumbnail_artwork_layout.h"
 #include <shellapi.h>
 #include <cstdio>
 #include <chrono>
+#include <cstring>
+#include <algorithm>
+
+static bool TestArtworkBounds() {
+    bool ok = true;
+    const auto check = [&](pulse::ui::IconArtworkBounds bounds,
+                           float left, float top, float right, float bottom,
+                           const char* name) {
+        const bool pass = bounds.left == left && bounds.top == top &&
+                          bounds.right == right && bounds.bottom == bottom;
+        std::printf("[%s] %s\n", pass ? "PASS" : "FAIL", name);
+        ok &= pass;
+    };
+    std::vector<uint8_t> pixels(8 * 4 * 4, 0);
+    using pulse::ui::MeasureIconArtwork;
+    check(MeasureIconArtwork(pixels, 8, 4), 0, 0, 1, 1, "transparent artwork uses full-frame fallback");
+    for (size_t y = 1; y < 3; ++y)
+        for (size_t x = 2; x < 6; ++x) pixels[(y * 8 + x) * 4 + 3] = 255;
+    check(MeasureIconArtwork(pixels, 8, 4), .25f, .25f, .75f, .75f,
+          "transparent padding produces normalized pixel edges");
+    pixels[(3 * 8 + 7) * 4 + 3] = 1;
+    check(MeasureIconArtwork(pixels, 8, 4), .25f, .25f, 1, 1,
+          "faint edge pixels count as artwork");
+    std::fill(pixels.begin(), pixels.end(), uint8_t{255});
+    check(MeasureIconArtwork(pixels, 8, 4), 0, 0, 1, 1, "opaque artwork preserves full frame");
+    check(MeasureIconArtwork(pixels, 0, 4), 0, 0, 1, 1, "zero-size input uses fallback");
+    check(MeasureIconArtwork(pixels, 9, 4), 0, 0, 1, 1, "truncated input uses fallback");
+    std::vector<uint8_t> padded(2 * 16, 0);
+    padded[16 + 4 + 3] = 255;
+    padded[15] = 255;  // Padding is not image artwork.
+    check(MeasureIconArtwork(padded, 2, 2, 16), .5f, .5f, 1, 1,
+          "thumbnail alpha bounds honor padded row stride");
+    check(MeasureIconArtwork(padded, 2, 2, 4), 0, 0, 1, 1,
+          "undersized row stride uses fallback");
+    const D2D1_RECT_F dest = D2D1::RectF(10, 20, 110, 120);
+    const pulse::ui::IconArtworkBounds inset{.25f, .25f, .75f, .75f};
+    const auto geometry = [&](uint32_t w, uint32_t h,
+                              pulse::ui::IconArtworkBounds bounds, bool bottom,
+                              float left, float top, float right, float lower,
+                              const char* name) {
+        const auto fitted = pulse::ui::ContainedThumbnailRect(dest, w, h, bounds, bottom);
+        const auto artwork = pulse::ui::ThumbnailArtworkRect(fitted, bounds);
+        check({artwork.left, artwork.top, artwork.right, artwork.bottom},
+              left, top, right, lower, name);
+    };
+    geometry(100, 100, inset, false, 35, 45, 85, 95,
+             "default thumbnail retains centered transparent artwork");
+    geometry(100, 100, inset, true, 35, 70, 85, 120,
+             "transparent thumbnail aligns actual artwork to slot bottom");
+    geometry(200, 100, {}, false, 10, 45, 110, 95,
+             "default opaque landscape thumbnail retains contain layout");
+    geometry(200, 100, {}, true, 10, 70, 110, 120,
+             "landscape thumbnail bottom alignment preserves aspect ratio");
+    geometry(100, 200, {}, true, 35, 20, 85, 120,
+             "portrait thumbnail bottom alignment preserves horizontal centering");
+    return ok;
+}
 
 namespace pulse::ui {
 struct ShellIconCacheTestAccess {
@@ -95,8 +153,15 @@ struct ShellIconCacheTestAccess {
                 auto* bitmap = cache.BitmapFor(L"", L"", true, FILE_ATTRIBUTE_DIRECTORY, size);
                 check(bitmap && bitmap->GetPixelSize().width >= 16,
                       "native folder converts to Direct2D bitmap at requested scale");
+                const auto bounds = cache.CachedArtworkBounds(L"", L"", true,
+                    FILE_ATTRIBUTE_DIRECTORY, size);
+                check(bounds.left >= 0 && bounds.top >= 0 && bounds.right <= 1 &&
+                      bounds.bottom <= 1 && bounds.left < bounds.right && bounds.top < bounds.bottom &&
+                      cache.artwork_bounds_.size() == cache.bitmaps_.size(),
+                      "converted icon caches valid normalized artwork bounds");
             }
             cache.SetDeviceContext(nullptr);
+            check(cache.artwork_bounds_.empty(), "device replacement clears artwork metadata");
             cache.SetDeviceContext(context.get());
             check(cache.BitmapFor(L"", L"", true, FILE_ATTRIBUTE_DIRECTORY, 32) != nullptr,
                   "device recreation preserves native indices and rebuilds bitmap");
@@ -107,9 +172,11 @@ struct ShellIconCacheTestAccess {
 };
 }
 
-int main() {
+int main(int argc, char** argv) {
+    const bool bounds_ok = TestArtworkBounds();
+    if (argc == 2 && std::strcmp(argv[1], "--bounds-only") == 0) return bounds_ok ? 0 : 1;
     const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    const bool ok = pulse::ui::ShellIconCacheTestAccess::Run();
+    const bool ok = pulse::ui::ShellIconCacheTestAccess::Run() && bounds_ok;
     if (SUCCEEDED(hr)) CoUninitialize();
     return ok ? 0 : 1;
 }

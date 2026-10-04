@@ -32,6 +32,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #pragma comment(lib, "advapi32.lib")
@@ -74,6 +75,19 @@ struct Client {
     std::atomic<bool> thread_done{false};
     std::wstring tracking_owner;
     bool tracking_lease = false;
+    // #66: the caller's own token, captured from its first request, and the
+    // folders already checked against it for searches (search thread only).
+    HANDLE caller_token = nullptr;
+    struct Visibility final : DirVisibility {
+        int State(int32_t dir) const override {
+            const auto found = dirs.find(dir);
+            return found == dirs.end() ? -1 : (found->second ? 1 : 0);
+        }
+        std::unordered_map<int32_t, bool> dirs;
+        uint64_t layout = 0;
+        ULONGLONG since = 0;
+    } visibility;
+    ~Client() { if (caller_token) CloseHandle(caller_token); }
 };
 
 struct SearchTask {
@@ -108,6 +122,7 @@ struct Host {
     ULONGLONG idle_since = 0;
     bool ever_client = false;
     bool test_mode = false;
+    bool caller_filter_test = false;  // PULSE_INDEX_TEST_CALLER_FILTER=1 with --test-host
     std::wstring pipe_name = kPipeName;
     std::wstring mutex_name = kMutexName;
 } g;
@@ -159,7 +174,8 @@ void SetSvc(DWORD state, DWORD win32 = NO_ERROR) {
 }
 
 SECURITY_ATTRIBUTES* PipeSa() {
-    if(!g.as_service) {
+    // The caller-filter test uses the service DACL so other callers can connect.
+    if(!g.as_service && !g.caller_filter_test) {
         static pulse::CurrentUserSecurityAttributes owner;
         return owner.get();
     }
@@ -336,6 +352,105 @@ void QueueSearch(std::shared_ptr<Client> c, uint32_t id, Query query, bool refre
     g.search_cv.notify_one();
 }
 
+// #66: the service reads the raw MFT as SYSTEM. Without a filter any signed-in
+// user could search names inside other profiles. A name is served only when
+// the caller could open its folder for listing with the caller's own token.
+constexpr ULONGLONG kVisibilityTtlMs = 10 * 60 * 1000;  // picks up ACL edits
+
+bool CallerFilter() { return g.as_service || g.caller_filter_test; }
+
+HANDLE CaptureCallerToken(HANDLE pipe) {
+    if (!ImpersonateNamedPipeClient(pipe)) return nullptr;
+    HANDLE token = nullptr;
+    if (!OpenThreadToken(GetCurrentThread(), TOKEN_QUERY | TOKEN_IMPERSONATE | TOKEN_DUPLICATE,
+                         TRUE, &token))
+        token = nullptr;
+    RevertToSelf();
+    return token;
+}
+
+bool CallerCanList(HANDLE token, std::wstring dir) {
+    if (!token || dir.empty()) return false;
+    while (dir.size() > 3 && dir.back() == L'\\') dir.pop_back();
+    if (dir.size() == 2 && dir[1] == L':') dir += L'\\';
+    if (dir.size() >= MAX_PATH && dir.rfind(L"\\\\", 0) != 0) dir.insert(0, L"\\\\?\\");
+    if (!SetThreadToken(nullptr, token)) return false;
+    const HANDLE h = CreateFileW(dir.c_str(), FILE_LIST_DIRECTORY,
+                                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                 OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    RevertToSelf();
+    if (h == INVALID_HANDLE_VALUE) return false;
+    CloseHandle(h);
+    return true;
+}
+
+std::wstring ParentDir(const std::wstring& path) {
+    const size_t slash = path.find_last_of(L'\\');
+    if (slash == std::wstring::npos) return path;
+    std::wstring dir = path.substr(0, slash);
+    if (dir.size() == 2 && dir[1] == L':') dir += L'\\';
+    return dir;
+}
+
+// Path-based checks, memoised for one request (feeds, journals, sizes).
+struct ListCheck {
+    HANDLE token = nullptr;
+    std::unordered_map<std::wstring, bool> memo;
+    bool Dir(const std::wstring& dir) {
+        if (!CallerFilter()) return true;
+        auto [found, added] = memo.try_emplace(dir, false);
+        if (added) found->second = CallerCanList(token, dir);
+        return found->second;
+    }
+    bool Record(const ChangeRecord& record) {
+        return Dir(ParentDir(record.path)) &&
+               (record.old_path.empty() || Dir(ParentDir(record.old_path)));
+    }
+};
+
+// A broad first query can name tens of thousands of folders; each check is
+// one kernel open, so they are spread over a few threads.
+void CheckDirs(Client& c, const SearchTask& task,
+               const std::vector<std::pair<int32_t, std::wstring>>& dirs) {
+    std::vector<int8_t> state(dirs.size(), -1);
+    std::atomic<size_t> next{0};
+    auto work = [&] {
+        for (size_t i; (i = next.fetch_add(1)) < dirs.size();) {
+            if (!c.alive || task.latest->load() != task.id) return;
+            state[i] = CallerCanList(c.caller_token, dirs[i].second) ? 1 : 0;
+        }
+    };
+    const unsigned threads = dirs.size() < 128 ? 1u
+        : (std::min)(8u, (std::max)(2u, std::thread::hardware_concurrency()));
+    std::vector<std::thread> pool;
+    for (unsigned i = 1; i < threads; ++i) pool.emplace_back(work);
+    work();
+    for (auto& thread : pool) thread.join();
+    for (size_t i = 0; i < dirs.size(); ++i)
+        if (state[i] >= 0) c.visibility.dirs[dirs[i].first] = state[i] != 0;
+}
+
+SearchResult SearchForCaller(Client& c, const SearchTask& task) {
+    if (!CallerFilter()) return g.engine.Search(task.query, task.latest.get(), task.id);
+    auto& vis = c.visibility;
+    const ULONGLONG now = GetTickCount64();
+    if (!vis.since || now - vis.since > kVisibilityTtlMs) { vis.dirs.clear(); vis.since = now; }
+    for (int round = 0; round < 4; ++round) {
+        SearchResult sr = g.engine.Search(task.query, task.latest.get(), task.id, &vis);
+        if (sr.layout && sr.layout != vis.layout) {
+            // Node ids were renumbered, so earlier answers describe other folders.
+            const bool stale = !vis.dirs.empty();
+            vis.dirs.clear();
+            vis.layout = sr.layout;
+            if (stale) continue;
+        }
+        if (sr.unchecked_dirs.empty()) return sr;
+        CheckDirs(c, task, sr.unchecked_dirs);
+        if (!c.alive || task.latest->load() != task.id) return {};
+    }
+    return {};
+}
+
 void SearchThread() {
     for (;;) {
         SearchTask task;
@@ -352,7 +467,7 @@ void SearchThread() {
         auto& c = task.client;
         if (!c || !c->alive || task.latest->load() != task.id) continue;
         TraceSearch("filename_query_begin", g.engine.Revision());
-        SearchResult sr = g.engine.Search(task.query, task.latest.get(), task.id);
+        SearchResult sr = SearchForCaller(*c, task);
         sr.revision = g.engine.Revision();
         TraceSearch("filename_query_done", sr.revision);
         if (!c->alive || task.latest->load() != task.id) continue;
@@ -455,9 +570,16 @@ bool HandleChanges(Client& client, const MsgHeader& hdr, const std::vector<uint8
         if (r.remaining()) return false;
         response = g.engine.Changes().Summaries(owner, paths, since);
         w.PutU32(static_cast<uint32_t>(response.state)); w.PutU32(static_cast<uint32_t>(response.summaries.size()));
+        ListCheck list{client.caller_token};  // #66
         for (auto& summary : response.summaries) {
-            const auto coverage = g.engine.ChangeCoverage(summary.path);
-            if (coverage != ChangeState::Gap && !(coverage == ChangeState::NotCovered && summary.count)) summary.state = coverage;
+            if (!list.Dir(summary.path)) {
+                ChangeSummary hidden;
+                hidden.path = summary.path;
+                summary = std::move(hidden);
+            } else {
+                const auto coverage = g.engine.ChangeCoverage(summary.path);
+                if (coverage != ChangeState::Gap && !(coverage == ChangeState::NotCovered && summary.count)) summary.state = coverage;
+            }
             w.PutString(summary.path); w.PutU64(summary.last_change); w.PutU32(summary.count);
             w.PutU32(static_cast<uint32_t>(summary.state));
             for (auto count_kind : summary.counts) w.PutU32(count_kind);
@@ -473,6 +595,13 @@ bool HandleChanges(Client& client, const MsgHeader& hdr, const std::vector<uint8
     response = g.engine.Changes().Details(owner, path, since, before, limit, filter);
     const auto coverage = g.engine.ChangeCoverage(path);
     if (coverage != ChangeState::Gap && !(coverage == ChangeState::NotCovered && !response.records.empty())) response.state = coverage;
+    ListCheck list{client.caller_token};  // #66
+    if (!list.Dir(path)) {
+        response.records.clear();
+        response.state = ChangeState::Unavailable;
+    } else {
+        std::erase_if(response.records, [&](const ChangeRecord& record) { return !list.Record(record); });
+    }
     w.PutU32(static_cast<uint32_t>(response.state)); w.PutU64(response.next_cursor);
     w.PutU32(static_cast<uint32_t>(response.records.size()));
     for (const auto& record : response.records) {
@@ -496,6 +625,8 @@ void ClientThread(std::shared_ptr<Client> c) {
         if (hdr.payload_size &&
             !ClientIo(*c, pipe, payload.data(), hdr.payload_size, false))
             break;
+        // Impersonation needs a completed read; searches are queued only after this.
+        if (!c->caller_token && CallerFilter()) c->caller_token = CaptureCallerToken(pipe);
         if(hdr.type==8) {
             PayloadReader reader(payload.data(),payload.size());uint64_t session=0;
             if(!reader.GetU64(session)) break;
@@ -513,7 +644,11 @@ void ClientThread(std::shared_ptr<Client> c) {
                 paths.push_back(std::move(path));
             }
             if (!valid || reader.remaining()) break;
-            PayloadWriter writer; PutFolderSizes(writer, g.engine.FolderSizes(paths));
+            auto sizes = g.engine.FolderSizes(paths);
+            ListCheck list{c->caller_token};  // #66
+            for (size_t i = 0; i < sizes.size() && i < paths.size(); ++i)
+                if (!list.Dir(paths[i])) sizes[i] = IndexedFolderSize{};
+            PayloadWriter writer; PutFolderSizes(writer, sizes);
             if (!WriteFrame(*c, kFolderSizeResponse, hdr.request_id, writer.data())) break;
         } else if (hdr.type == kFeedRequest) {
             PayloadReader reader(payload.data(),payload.size()); uint32_t version=0,changes=0;
@@ -527,6 +662,9 @@ void ClientThread(std::shared_ptr<Client> c) {
                     if(page.gap || !page.records.empty()) break;
                 }
             }
+            ListCheck list{c->caller_token};  // #66
+            if (!root.empty() && !list.Dir(root)) page.records.clear();
+            else std::erase_if(page.records, [&](const ChangeRecord& record) { return !list.Record(record); });
             PayloadWriter writer;PutFeedPage(writer,page);
             if(!WriteFrame(*c,kFeedResponse,hdr.request_id,writer.data())) break;
         } else if (hdr.type >= REQ_IDX_CHANGE_LEASE && hdr.type <= REQ_IDX_CHANGE_DETAILS) {
@@ -701,6 +839,10 @@ int RunHost(bool as_service, bool test_mode = false,
             std::wstring mutex_name = kMutexName, std::wstring fixture_root = {}) {
     g.as_service = as_service;
     g.test_mode = test_mode;
+    wchar_t caller_filter[4]{};
+    g.caller_filter_test = test_mode &&
+        GetEnvironmentVariableW(L"PULSE_INDEX_TEST_CALLER_FILTER", caller_filter, 4) == 1 &&
+        caller_filter[0] == L'1';
     g.pipe_name = std::move(pipe_name);
     g.mutex_name = std::move(mutex_name);
     ServiceTrace(L"RunHost entered");
@@ -718,6 +860,13 @@ int RunHost(bool as_service, bool test_mode = false,
             SetSvc(SERVICE_STOPPED, failure);
             return static_cast<int>(failure);
         }
+        // #66: index files list every name on the volumes. The default folder
+        // is repaired on every start; a chosen one only while it is empty.
+        if (CompareStringOrdinal(config.index_path.c_str(), -1, (MachineDataRoot() + L"\\Index").c_str(), -1,
+                                 TRUE) == CSTR_EQUAL)
+            (void)MachineIndexRoot();
+        else
+            (void)ProtectIndexDirectory(config.index_path);
         SetActiveIndexDirectory(config.index_path);
         const std::wstring probe = config.index_path + L"\\.pulse-write-check-" +
             std::to_wstring(GetCurrentProcessId());

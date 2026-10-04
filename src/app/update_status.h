@@ -10,6 +10,7 @@ inline std::wstring UpdateProgressText(const UpdateProgress& progress) {
     switch (progress.phase) {
     case UpdatePhase::Connecting: return l10n::Get(StringId::UpdateConnecting);
     case UpdatePhase::Verifying: return l10n::Get(StringId::UpdateVerifying);
+    case UpdatePhase::WaitingOperations: return l10n::Get(StringId::UpdateWaitingOperations);
     case UpdatePhase::Ready:
     case UpdatePhase::Launching: return l10n::Get(StringId::UpdateLaunching);
     case UpdatePhase::Installing: return l10n::Get(StringId::UpdateInstallingStatus);

@@ -1,0 +1,7 @@
+{
+  "pure_vertical_phantom": {
+    "source": "\\vphantom{\\frac{a}{b}}",
+    "allowZeroWidth": true,
+    "reason": "An intentional vertical phantom reserves height and baseline but has zero width and no ink. All other positive-height and finite-metric checks remain required."
+  }
+}

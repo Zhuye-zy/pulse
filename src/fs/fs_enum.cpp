@@ -1,5 +1,7 @@
+#include <mutex>
 // fs_enum.cpp
 #include "fs_enum.h"
+#include "../common/localization.h"
 #include <windows.h>
 #include <shellapi.h>
 #include <shlwapi.h>
@@ -11,6 +13,15 @@
 #pragma comment(lib, "shlwapi.lib")
 
 namespace pulse::fs {
+
+DWORD ReadReparseTag(const std::wstring& path) {
+    WIN32_FIND_DATAW data{};
+    const HANDLE find = FindFirstFileExW(NormalizePath(path).c_str(), FindExInfoBasic,
+        &data, FindExSearchNameMatch, nullptr, 0);
+    if (find == INVALID_HANDLE_VALUE) return 0;
+    FindClose(find);
+    return (data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) ? data.dwReserved0 : 0;
+}
 
 using NTSTATUS = LONG;
 constexpr NTSTATUS STATUS_SUCCESS = 0;
@@ -105,13 +116,15 @@ static NtCreateFile_t g_NtCreateFile = nullptr;
 static NtQueryDirectoryFile_t g_NtQueryDirectoryFile = nullptr;
 
 static void InitNtApi() {
-    if (g_NtCreateFile) return;
+    static std::once_flag initialized;
+    std::call_once(initialized, [] {
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
     if (!ntdll) throw std::runtime_error("ntdll.dll not loaded");
     g_NtCreateFile = reinterpret_cast<NtCreateFile_t>(GetProcAddress(ntdll, "NtCreateFile"));
     g_NtQueryDirectoryFile = reinterpret_cast<NtQueryDirectoryFile_t>(GetProcAddress(ntdll, "NtQueryDirectoryFile"));
     if (!g_NtCreateFile || !g_NtQueryDirectoryFile)
         throw std::runtime_error("NtCreateFile / NtQueryDirectoryFile not found");
+    });
 }
 
 bool IsVirtualPath(const std::wstring& path) {
@@ -208,10 +221,16 @@ static void EnumerateFindFirstFileEx(const std::wstring& path, std::vector<DirEn
         e.attrs = fd.dwFileAttributes;
         e.is_dir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
         e.is_reparse = (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+        e.reparse_tag = e.is_reparse ? fd.dwReserved0 : 0;
         e.cloud_recall = (fd.dwFileAttributes & FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS) != 0;
         out.push_back(std::move(e));
     } while (FindNextFileW(h, &fd));
+    const DWORD error = GetLastError();
     FindClose(h);
+    if (error != ERROR_NO_MORE_FILES) {
+        out.clear();
+        throw std::runtime_error("FindNextFileW failed, error=" + std::to_string(error));
+    }
 }
 
 static void EnumerateNtQuery(const std::wstring& path, std::vector<DirEntry>& out) {
@@ -309,6 +328,8 @@ static void EnumerateNtQuery(const std::wstring& path, std::vector<DirEntry>& ou
                 e.attrs = info->FileAttributes;
                 e.is_dir = (info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
                 e.is_reparse = (info->FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+                // FileFullDirectoryInformation returns the reparse tag in EaSize.
+                e.reparse_tag = e.is_reparse ? info->EaSize : 0;
                 e.cloud_recall = (info->FileAttributes & FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS) != 0;
                 out.push_back(std::move(e));
             }
@@ -334,13 +355,19 @@ static void EnumerateThisPc(std::vector<DirEntry>& out) {
         wchar_t volName[MAX_PATH + 1] = {};
         GetVolumeInformationW(root, volName, MAX_PATH, nullptr, nullptr, nullptr, nullptr, 0);
         DirEntry e;
-        e.name = std::wstring(volName[0] ? volName : L"本地磁盘") +
-                 L" (" + root[0] + L":)"; // 本地磁盘
+        e.name = std::wstring(volName[0] ? volName : l10n::Pick(L"本地磁盘", L"Local Disk")) +
+                 L" (" + root[0] + L":)";
         e.full_path = NormalizePath(root);
         e.is_dir = true;
         e.attrs = FILE_ATTRIBUTE_DIRECTORY;
         // Local metadata only (no media access): the UI shows it as the type.
         e.drive_type = static_cast<uint8_t>(GetDriveTypeW(root));
+        // Same figures as the sidebar drive rows; the tile view draws them.
+        ULARGE_INTEGER free_bytes{}, total_bytes{};
+        if (GetDiskFreeSpaceExW(root, &free_bytes, &total_bytes, nullptr)) {
+            e.drive_total = total_bytes.QuadPart;
+            e.drive_free = free_bytes.QuadPart;
+        }
         out.push_back(std::move(e));
     }
 }

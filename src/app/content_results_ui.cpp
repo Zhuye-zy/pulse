@@ -15,6 +15,7 @@ struct ContentSelectionAction {
     size_t count=0;
     int focus=-1;
     uint64_t selection=0;
+    uint64_t order=0;
     std::function<void(AppState&)> action;
     std::mutex mutex;
     std::optional<index::ContentResultStore::Selection> result;
@@ -42,7 +43,8 @@ std::optional<uint64_t> ContentSelectionSize(app::Tab& tab) {
 struct ContentSelectionRestore {
     std::weak_ptr<index::ContentResultStore> store;
     uint64_t selection=0;
-    int index=-1;
+    uint64_t order=0;
+    std::vector<int> indices;
     std::atomic<bool> done{false};
 };
 namespace {
@@ -83,13 +85,22 @@ bool RefreshContentResults(AppState& s) {
             store.SetFilter(app::ContentFilter(tab->filter_text,s.places));
         }
         if(tab->content_revision!=store.Revision() || tab->search_total!=store.Count()) {
-            // Live deltas re-sort the store off the UI thread, so index-based
-            // selection would now name other files. Re-find the focused file.
-            if(!tab->search_content_active && tab->selected_index>=0 && tab->search_preserve_selection.empty() &&
-               tab->content_focus_selection==tab->selection_revision &&
-               tab->content_focus_revision==tab->content_revision && !tab->content_focus_path.empty()) {
-                tab->search_preserve_selection=tab->content_focus_path;
+            if (tab->content_order_revision != store.OrderRevision()) {
+                auto paths = std::move(tab->content_selected_paths);
+                const auto focus = tab->content_focus_path;
                 tab->ClearSelection();
+                tab->content_order_revision=store.OrderRevision();
+                if (!paths.empty()) {
+                    const auto focused = std::find(paths.begin(),paths.end(),focus);
+                    if (focused != paths.end()) std::iter_swap(paths.begin(),focused);
+                    tab->content_selected_paths=paths;
+                    auto job=std::make_shared<ContentSelectionRestore>();
+                    job->store=tab->content_results; job->selection=tab->selection_revision; job->order=store.OrderRevision();
+                    tab->content_selection_restore=job;
+                    store.FindPaths(std::move(paths),[weak=std::weak_ptr<ContentSelectionRestore>(job)](auto indices) {
+                        if(auto current=weak.lock()) {current->indices=std::move(indices);current->done=true;}
+                    });
+                }
             }
             tab->content_revision=store.Revision();
             tab->search_total=store.Count(); tab->file_count=store.Count(); tab->directory_count=0;
@@ -106,20 +117,20 @@ bool RefreshContentResults(AppState& s) {
         const auto old_title=tab->virtual_title;
         ContentTitle(s,*tab);
         changed |= old_title!=tab->virtual_title;
-        if(!tab->search_content_active && !store.Filtering() && !store.Sorting() && !tab->search_preserve_selection.empty()) {
+        if(!store.Filtering() && !store.Sorting() && !tab->search_preserve_selection.empty()) {
             auto job=std::make_shared<ContentSelectionRestore>();
-            job->store=tab->content_results; job->selection=tab->selection_revision;
+            job->store=tab->content_results; job->selection=tab->selection_revision; job->order=store.OrderRevision();
             tab->content_selection_restore=job;
             store.FindPath(std::move(tab->search_preserve_selection),[weak=std::weak_ptr<ContentSelectionRestore>(job)](int index) {
-                if(auto current=weak.lock()) {current->index=index;current->done=true;}
+                if(auto current=weak.lock()) {if(index>=0) current->indices={index};current->done=true;}
             });
             tab->search_preserve_selection.clear();
         }
         if(auto job=tab->content_selection_restore; job && job->done) {
-            if(job->store.lock()==tab->content_results && job->selection==tab->selection_revision && job->index>=0) {
-                tab->SelectOnly(job->index);
-                store.Prefetch(static_cast<size_t>(job->index));
-                if(&pane==s.pane) EnsureRowVisible(s,*tab,job->index);
+            if(job->store.lock()==tab->content_results && job->selection==tab->selection_revision && job->order==store.OrderRevision() && !job->indices.empty()) {
+                tab->SelectIndices(job->indices);
+                store.Prefetch(static_cast<size_t>(job->indices.front()));
+                if(&pane==s.pane) EnsureRowVisible(s,*tab,job->indices.front());
                 changed=true;
             }
             tab->content_selection_restore.reset();
@@ -154,11 +165,13 @@ bool DeferContentSelection(AppState& s,std::function<void(AppState&)> action,boo
     auto* tab=ActiveTab(s);
     if(!tab || !tab->content_results || tab->content_action_ready || !tab->SelectedCount()) return false;
     if(s.contentSelectionAction) return true;
+    if(tab->content_order_revision != tab->content_results->OrderRevision()) { RefreshContentResults(s); return true; }
     auto job=std::make_shared<ContentSelectionAction>();
     job->store=tab->content_results; job->all=tab->all_selected && !focused_only; job->focused_only=focused_only;
     if(focused_only) job->indices={tab->selected_index};
     else if(!job->all) job->indices=tab->SelectedIndices();
     job->selection=tab->selection_revision;
+    job->order=tab->content_results->OrderRevision();
     job->count=tab->EntryCount(); job->focus=tab->selected_index; job->action=std::move(action);
     s.contentSelectionAction=job; InvalidateRect(s.hwnd,nullptr,FALSE);
     const HWND hwnd=s.hwnd;
@@ -168,14 +181,14 @@ bool DeferContentSelection(AppState& s,std::function<void(AppState&)> action,boo
                 { std::lock_guard lock(current->mutex); current->result=std::move(result); }
                 PostMessageW(hwnd,WM_CONTENT_SELECTION,0,0);
             }
-        });
+        }, job->order);
     return true;
 }
 void SelectContentPattern(AppState& s,const std::wstring& pattern) {
     auto* tab=ActiveTab(s);if(!tab || !tab->content_results) return;
     auto job=std::make_shared<ContentSelectionAction>();job->pattern=true;job->store=tab->content_results;
     tab->filter_text.clear();RefreshContentResults(s);
-    job->selection=tab->selection_revision; s.contentSelectionAction=job; InvalidateRect(s.hwnd,nullptr,FALSE);
+    job->selection=tab->selection_revision; job->order=tab->content_results->OrderRevision(); s.contentSelectionAction=job; InvalidateRect(s.hwnd,nullptr,FALSE);
     tab->content_results->Match(app::ContentFilter(pattern,s.places),[weak=std::weak_ptr<ContentSelectionAction>(job),hwnd=s.hwnd](auto result) {
         if(auto current=weak.lock()) {
             {std::lock_guard lock(current->mutex);current->result=std::move(result);}
@@ -195,14 +208,14 @@ void CompleteContentSelection(AppState& s) {
     s.contentSelectionAction.reset(); InvalidateRect(s.hwnd,nullptr,FALSE);
     auto* tab=ActiveTab(s); auto store=job->store.lock();
     if(job->pattern) {
-        if(tab && store && tab->content_results==store && tab->selection_revision==job->selection && !result->error) {
+        if(tab && store && tab->content_results==store && store->OrderRevision()==job->order && tab->selection_revision==job->selection && !result->error) {
             tab->SelectIndices(result->matches);
             if(tab->selected_index>=0) EnsureRowVisible(s,*tab,tab->selected_index);
             InvalidateRect(s.hwnd,nullptr,FALSE);
         }
         return;
     }
-    if(!tab || !store || tab->content_results!=store || tab->selection_revision!=job->selection || (!job->focused_only && tab->all_selected!=job->all) ||
+    if(!tab || !store || tab->content_results!=store || store->OrderRevision()!=job->order || tab->selection_revision!=job->selection || (!job->focused_only && tab->all_selected!=job->all) ||
         (!job->focused_only && !job->all && tab->SelectedIndices()!=job->indices) || tab->selected_index!=job->focus) return;
     if(result->error) {
         tab->banner_title=l10n::Get(l10n::StringId::SearchIncomplete);

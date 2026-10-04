@@ -312,8 +312,19 @@ void MainRenderer::DrawSidebar(const WindowViewModel& vm, const D2D1_RECT_F& rec
             // The section being dragged stays lit for the whole gesture.
             const bool header_dragging = vm.sidebar_group_drag_id >= 0 &&
                 vm.sidebar[slot.group].id == vm.sidebar_group_drag_id;
-            header.state.hovered =
-                IsHovered(vm, HitTestResult::SidebarHeader, slot.group) || header_dragging;
+            // #80: on a navigable section the title is a link and lights on
+            // its own; the rest of the row keeps the fold hover.
+            const SidebarGroup& group = vm.sidebar[slot.group];
+            const bool title_hot = group.navigable && !header_dragging &&
+                IsHovered(vm, HitTestResult::SidebarHeader, slot.group, 1);
+            header.state.hovered = header_dragging ||
+                (!title_hot && IsHovered(vm, HitTestResult::SidebarHeader, slot.group));
+            if (title_hot) {
+                painter_.FillRoundedRect(
+                    painter_.SidebarSectionHeaderTitleRect(slot.rc, group.header,
+                                                           !group.icon_glyph.empty()),
+                    6.0f * scale_, theme.fill_hover);
+            }
             painter_.DrawSidebarSectionHeader(header);
             if (header.skip_glyph) {
                 DrawFluentSvg(header_svg, painter_.SidebarSectionHeaderIconRect(slot.rc),

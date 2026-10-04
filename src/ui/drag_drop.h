@@ -26,9 +26,14 @@ namespace pulse::ui {
 // "C:\" for drive paths, "\\server\share" for UNC, "" when undetermined.
 std::wstring VolumeRoot(const std::wstring& path);
 
-// Explorer modifier semantics. allowed is the DoDragDrop dwOKEffects mask.
+// Explorer modifier semantics. allowed is the DoDragDrop dwOKEffects mask and
+// preferred_effect the source's Preferred DropEffect (0 when it sets none).
+// Modifiers win. With no modifier, a source that asks for exactly COPY or
+// exactly MOVE gets it; COPY|MOVE ("either is fine", which Pulse's own drags
+// publish) keeps the same-volume default.
 DWORD ComputeDropEffect(DWORD key_state, const std::wstring& source_sample,
-                        const std::wstring& dest_dir, DWORD allowed);
+                        const std::wstring& dest_dir, DWORD allowed,
+                        DWORD preferred_effect = 0);
 
 // First source that is a real directory (not a file or broken path).
 // Used when dropping onto a pane header to navigate instead of copy/move.
@@ -105,20 +110,23 @@ private:
 
 // Runs the modal DoDragDrop loop. Returns the performed DROPEFFECT_*.
 DWORD DoFileDragDrop(const std::vector<std::wstring>& paths, DWORD allowed_effects,
-                     std::function<bool()> esc_consumed);
+                     std::function<bool()> esc_consumed,
+                     const std::wstring& source_view = {});
 
 // ---------------------------------------------------------------------------
 // Drop-in target.
 // ---------------------------------------------------------------------------
 struct DropTargetCallbacks {
     // pt in client coordinates; sources already extracted from CF_HDROP.
-    // Return the DROPEFFECT_* to show (badge + cursor follow it).
+    // Return the DROPEFFECT_* to show (badge + cursor follow it). allowed is
+    // the source's effect mask, preferred its Preferred DropEffect (0 when
+    // absent), so the badge matches what the drop will actually do.
     std::function<DWORD(const std::vector<std::wstring>& sources, POINT pt,
-                        DWORD key_state, DWORD allowed)> drag_over;
+                        DWORD key_state, DWORD allowed, DWORD preferred)> drag_over;
     std::function<void()> drag_leave;
-    // Returns the performed effect.
+    // Same arguments as drag_over. Returns one allowed performed effect, or NONE.
     std::function<DWORD(const std::vector<std::wstring>& sources, POINT pt,
-                        DWORD key_state, DWORD preferred)> drop;
+                        DWORD key_state, DWORD allowed, DWORD preferred)> drop;
 };
 
 class WindowDropTarget final : public IDropTarget {
@@ -140,7 +148,7 @@ private:
     HWND hwnd_ = nullptr;
     DropTargetCallbacks cb_;
     std::vector<std::wstring> sources_; // cached from DragEnter
-    DWORD preferred_ = 0;
+    DWORD preferred_ = 0;               // source's Preferred DropEffect, from DragEnter
 };
 
 } // namespace pulse::ui

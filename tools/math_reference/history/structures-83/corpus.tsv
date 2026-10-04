@@ -1,0 +1,84 @@
+id	display	expectation	source
+quadratic_roots	1	native_accept	x_{1,2}=\frac{-b\pm\sqrt{b^2-4ac}}{2a}
+normal_density	1	native_accept	p(x)=\frac{1}{\sigma\sqrt{2\pi}}\exp\left(-\frac{(x-\mu)^2}{2\sigma^2}\right)
+bayes_rule	1	native_accept	P(A\mid B)=\frac{P(B\mid A)P(A)}{P(B)}
+binomial_probability	1	native_accept	P(X=k)=\binom{n}{k}p^k(1-p)^{n-k}
+geometric_series	1	native_accept	\sum_{k=0}^{n}r^k=\frac{1-r^{n+1}}{1-r}
+fourier_transform	1	native_accept	F(\omega)=\int_{-\infty}^{\infty}f(t)e^{-i\omega t}\,\mathrm{d}t
+second_derivative	0	native_accept	f''(x)=2\cos x-x\sin x
+gradient_descent	1	native_accept	\mathbf{x}_{k+1}=\mathbf{x}_k-\eta\nabla f(\mathbf{x}_k)
+matrix_system	1	native_accept	\begin{pmatrix}2&-1\\1&3\end{pmatrix}\begin{pmatrix}x\\y\end{pmatrix}=\begin{pmatrix}4\\7\end{pmatrix}
+determinant_identity	1	native_accept	\det\begin{pmatrix}a&b\\c&d\end{pmatrix}=ad-bc
+piecewise_loss	1	native_accept	L(r)=\begin{cases}\frac{r^2}{2}&|r|\leq1\\|r|-\frac{1}{2}&|r|>1\end{cases}
+aligned_derivation	1	native_accept	\begin{aligned}(a+b)^2&=a^2+2ab+b^2\\(a-b)^2&=a^2-2ab+b^2\end{aligned}
+nested_continued_fraction	1	native_accept	q=1+\frac{1}{2+\frac{1}{3+\frac{1}{4}}}
+root_and_scripts	0	native_accept	z_n=\sqrt[n+1]{a_i^2+b_j^2}
+constrained_sum	1	native_accept	S_n=\sum_{\substack{i+j=n\\i,j\geq0}}a_i b_j
+annotated_limit	1	native_accept	\operatorname*{argmax}_{x\in\mathbb{R}}\left[-(x-2)^2\right]=2
+convergence_arrow	1	native_accept	x_n\xrightarrow[n\to\infty]{\text{in probability}}x
+tensor_indices	0	native_accept	T_{ij}^{kl}=A_i^kB_j^l-A_i^lB_j^k
+vector_accents	1	native_accept	\vec{v}=\overrightarrow{AB},\quad\hat{u}=\frac{\vec{v}}{\sqrt{v_1^2+v_2^2}}
+sample_mean	1	native_accept	\bar{x}=\frac{1}{n}\sum_{i=1}^{n}x_i,\quad\widetilde{x}=\operatorname{median}(x_1,\ldots,x_n)
+boxed_energy	1	native_accept	\boxed{E=\frac{1}{2}mv^2+mgh}
+cancelled_ratio	1	native_accept	\frac{\cancel{x}(x+1)}{\cancel{x}}=x+1
+array_alignment	1	native_accept	\begin{array}{rcl}a+b&=&c\\a-b&=&d\end{array}
+inline_style_fraction	0	native_accept	q=\dfrac{a}{b}+\tfrac{c}{d}
+nested_style_scope	1	native_accept	A={\scriptstyle x^{y_z}}+{\displaystyle\frac{1}{1+x}}
+annotated_equality	1	native_accept	f(x)\overset{\text{def}}{=}x^2,\quad a\underset{n\to\infty}{\longrightarrow}b
+modular_equation	0	native_accept	a^{p-1}\equiv1\pmod{p}
+text_with_spaces	0	native_accept	\textbf{mean value}\quad f(c)=\frac{1}{b-a}\int_a^b f(x)\,dx
+calligraphic_space	1	native_fallback	\mathcal{L}(\theta)=\sum_{i=1}^{n}\log p(x_i\mid\theta)
+underbrace_derivation	1	native_accept	S_n=\underbrace{1+1+\cdots+1}_{n\text{ terms}}=n
+explicit_spacing	0	native_accept	a\hspace{2em}b=c
+colored_error	1	native_fallback	\color{red}{e_n}=x_n-x
+equation_number	1	native_fallback	E=mc^2\tag{1}
+macro_definition	1	native_fallback	\newcommand{\energy}[1]{#1c^2}\energy{m}
+phantom_alignment	1	native_accept	\begin{aligned}x&=1\\\phantom{x}+y&=2\end{aligned}
+array_vertical_rules	1	native_accept	\begin{array}{c|c}a&b\\c&d\end{array}
+unclosed_fraction	1	invalid	f(x)=\frac{x+1}{x-1
+duplicate_superscript	0	invalid	x^2^3+y=0
+missing_radicand	0	invalid	a+\sqrt
+mismatched_environment	1	invalid	\begin{pmatrix}a&b\\c&d\end{bmatrix}
+missing_right_fence	1	invalid	\left(\frac{a}{b}+c
+unknown_command	0	invalid	a+\pulseunknown{b}=c
+stray_alignment	0	invalid	x&=y
+array_column_overflow	1	invalid	\begin{array}{cc}a&b&c\end{array}
+ruled_augmented_system	1	native_accept	\left[\begin{array}{rr|r}\hline2&-1&4\\1&3&7\\\hline\end{array}\right]
+double_rule_table	1	native_accept	\begin{array}{||c||c||}\hline\hline x&x^2\\\hline1&1\\2&4\\\hline\hline\end{array}
+array_row_gap_em	1	native_accept	\begin{array}{rcl}f(x)&=&\frac{x+1}{x-1}\\[0.6em]g(x)&=&\sqrt{x^2+1}\end{array}
+array_row_gap_ex_pt	1	native_accept	\begin{array}{c|c}n&a_n\\[1ex]\hline1&\frac{1}{2}\\[3pt]2&\frac{2}{3}\end{array}
+ruled_nested_matrix	1	native_accept	M=\begin{array}{|c|c|}\hline\frac{a}{b}&\sqrt{c}\\\hline\begin{matrix}1&0\\0&1\end{matrix}&d^2\\\hline\end{array}
+conditional_middle	1	native_accept	P\left(A\middle|B\right)=\frac{P(A\cap B)}{P(B)}
+set_middle_condition	1	native_accept	S=\left\{x\in\mathbb{R}\middle|x^2\leq1\right\}
+multiple_middle_fences	1	native_accept	T=\left(a\middle|\frac{b}{c}\middle\Vert\sqrt{d}\right)
+nested_middle_fences	1	native_accept	Q=\left(\left\{x\middle|x>0\right\}\middle|\frac{a}{b}\right)
+underbrace_fraction_sum	1	native_accept	S=\underbrace{\frac{1}{n}+\cdots+\frac{1}{n}}_{n\text{ terms}}=1
+overbrace_power_product	1	native_accept	\overbrace{a\cdot a\cdots a}^{n\text{ factors}}=a^n
+brace_opposite_scripts	1	native_accept	\underbrace{a+b}_{s}^{2}+\overbrace{c+d}^{t}_{k}=q
+nested_brace_labels	1	native_accept	\overbrace{\underbrace{a+b}_{s}+c}^{t}=s+c
+phantom_fraction_alignment	1	native_accept	\begin{aligned}u&=\frac{a}{b}+c\\v&=\phantom{\frac{a}{b}}+d\end{aligned}
+horizontal_phantom_spacing	0	native_accept	a\hphantom{\frac{b}{c}}+d=e
+vertical_phantom_height	0	native_accept	x^{\vphantom{\frac{a}{b}}2}+y_1=z
+signed_hspace_equation	0	native_accept	a\hspace{-0.2em}b+\hspace{2pt}c=d
+mixed_unit_hspace	1	native_accept	\sqrt{x}\hspace{1ex}\frac{a}{b}\hspace{0.5em}+c=d
+brace_phantom_alignment	1	native_accept	\overbrace{a+\hphantom{b}+c}^{\text{three positions}}=s
+ruled_brace_phantom_array	1	native_accept	\begin{array}{|l|r|}\hline\underbrace{a+b}_{s}&s^2\\[0.4em]\hline\phantom{a}+c&\frac{c}{d}\hspace{2pt}\\\hline\end{array}
+middle_outside_fence	0	invalid	P(A\middle|B)=q
+missing_middle_delimiter	1	invalid	\left(x\middle\right)
+hspace_missing_unit	0	invalid	a\hspace{2}b=c
+hspace_malformed_decimal	0	invalid	a\hspace{1..2em}b=c
+array_hline_inside_cell	1	invalid	\begin{array}{cc}a\hline&b\\c&d\end{array}
+array_row_gap_bad_unit	1	invalid	\begin{array}{c}x\\[2banana]y\end{array}
+array_negative_row_gap	1	native_fallback	\begin{array}{c}x\\[-0.5em]y\end{array}
+array_triple_vertical_rules	1	native_fallback	\begin{array}{c|||c}a&b\\c&d\end{array}
+hspace_boundary_em	1	native_accept	x\hspace{20em}+1=2
+hspace_boundary_ex	1	native_accept	x\hspace{40ex}+1=2
+hspace_boundary_pt	1	native_accept	x\hspace{200pt}+1=2
+hspace_over_budget_em	0	native_fallback	a\hspace{20.01em}+b=c
+hspace_over_budget_ex	0	native_fallback	a\hspace{40.01ex}+b=c
+hspace_over_budget_pt	0	native_fallback	a\hspace{200.01pt}+b=c
+array_row_gap_over_budget	1	native_fallback	\begin{array}{c}x\\[20.01em]y\end{array}
+array_triple_horizontal_rules	1	native_fallback	\begin{array}{cc}\hline\hline\hline a&b\\c&d\end{array}
+pure_vertical_phantom	1	native_accept	\vphantom{\frac{a}{b}}
+pure_phantom	1	native_accept	\phantom{\frac{a}{b}}
+pure_hspace	0	native_fallback	\hspace{2em}

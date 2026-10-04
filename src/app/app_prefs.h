@@ -14,8 +14,21 @@ struct AppPrefs {
     bool persist = true;
     bool launch_on_startup = false;
     bool keep_running_on_close = false;
+    // notify_icon_mode: the notification-area icon while closing keeps Pulse
+    // running: 0 always, 1 only while the window is closed to it, 2 never
+    // (a second launch brings the window back; #57).
+    int notify_icon_mode = 0;
     bool open_folders_in_pulse = false;
     bool take_over_win_e = false;
+    bool take_over_this_pc = false; // HKCU This PC open verb (default_file_manager.h)
+    bool integration_enabled = false;
+    bool integration_folders = true;
+    bool integration_win_e = true;
+    bool integration_this_pc = true;
+    bool integration_configured = false; // runtime: new-format preferences were loaded
+    bool integration_residual = false; // runtime: some association still belongs to Pulse
+    bool integration_incomplete = false;
+    bool take_over_explorer_windows = false; // experimental choice; runtime is gated by integration_enabled
     bool shell_tag_menu = false;    // File Explorer "Pulse tags" submenu (shell_tag_menu.cpp syncs HKCU)   // registry is the source of truth (not in app.json)
     bool verify_copies = false;
     bool show_status_performance = false;
@@ -25,6 +38,7 @@ struct AppPrefs {
     bool list_zebra_rows = true;
     bool list_size_bar = false;
     bool list_tag_name_color = false; // tint tagged names with their first tag's color
+    bool list_selection_outline = false; // accent outline around selected items (#78)
     bool vertical_tabs = false;       // tabs as the first sidebar section
     bool sidebar_collapsed = false;   // sidebar folded to its icon rail (Ctrl+B)
     // 0 folders first, 1 follow the sort direction, 2 mixed with files
@@ -36,9 +50,16 @@ struct AppPrefs {
     // new_tab_open: 0 the current folder, 1 the default location.
     int startup_open = 0;
     int new_tab_open = 0;
+    // Closing the only tab closes the window (app/last_tab_close.h).
+    bool close_window_with_last_tab = false;
+    bool confirm_recycle_delete = false; // ask before Delete moves items to the Recycle Bin
+    // Sign-in launches (Run value with --startup) stay hidden behind the tray icon.
+    bool start_in_tray = false;
     std::wstring home_folder;
     // Text rendering: 0 auto (LumaText), 1 sharp (pixel-snapped DirectWrite), 2 smooth
     int text_render = 0;
+    // Interface font size in percent of the built-in sizes: 90 / 100 / 112 / 125.
+    int ui_font_scale = 100;
     FolderViewPrefs folder_views;
     FolderSortPrefs folder_sorts;
     FolderGroupPrefs folder_groups;
@@ -49,13 +70,14 @@ struct AppPrefs {
     bool show_hidden_files = false;
     // Hidden + system attributes; File Explorer keeps these behind a separate option.
     bool show_protected_os_files = false;
-    bool blank_click_go_back = false;
+    // Double click on empty list space: 0 nothing, 1 back, 2 up (blank_pane_click.h).
+    int blank_click_action = 0;
     bool change_tracking_enabled = false;
     int change_tracking_days = 7;
     // system / zh-CN / en-US
     int theme_mode = -1; // legacy session theme, or 0 system / 1 light / 2 dark
     std::wstring language = L"system";
-    // none / acrylic-material / mica / mica-alt / frosted-glass
+    // none / acrylic-material / mica / mica-alt  (legacy dwm-blur → acrylic)
     std::wstring window_effect = L"mica-alt";
     std::wstring background_image;
     // Interface transparency 0..100 (json panel_transparency). 25/50/75 match the
@@ -69,6 +91,8 @@ struct AppPrefs {
     int tray_icon_size = 48; // staging-tray deck icon edge in DIPs (32..64)
     // Interaction hints: status-bar context hints + one-time teaching tips.
     bool show_hints = true;
+    // Background update checks and their "update available" toasts (Settings > About).
+    bool auto_check_updates = true;
     uint32_t tips_seen = 0; // bit per app::TeachTip already shown or dismissed
     // Empty = theme default, or Windows when explicitly selected.
     std::wstring accent_rgb;
@@ -83,12 +107,16 @@ struct AppPrefs {
     std::wstring last_seen_version;
     std::wstring tray_dests; // staging tray: recent drop folders, newest first, '|'-joined (max 3)
     bool had_file = false; // runtime only: app.json existed when Load() ran
+    bool load_failed = false; // blocks saving defaults over an unreadable/damaged existing file
 
     void ResetToDefaults();
     bool Load();
     bool Save() const;
     std::wstring ToJson() const;
     bool FromJson(const std::wstring& json);
+    void MigrateIntegration();
+    bool ReadIntegrationResidual() const;
+    bool ReadIntegrationIncomplete() const;
 
     // HKCU Run key is the source of truth; call after Load() and on toggle.
     bool ReadLaunchOnStartup() const;
@@ -98,8 +126,9 @@ struct AppPrefs {
     bool ReadFolderOpen() const;
     bool ApplyFolderOpen(bool on);
 
-    // HKCU Run starts a windowless Win+E agent at sign-in. A legacy Explorer
-    // launch verb is migrated on load and restored when this setting turns off.
+    // HKCU "File Explorer" launch verb used by Win+E and the taskbar Explorer
+    // pin ({52205fd8-...}\shell\opennewwindow). Original values are kept by
+    // shell_integration_registry and restored only while Pulse still owns them.
     bool ReadWinE() const;
     bool ApplyWinE(bool on);
 
@@ -113,5 +142,10 @@ bool ParseAccentRgb(const std::wstring& text, uint32_t& rgb) noexcept;
 // Menu row height for a file-list row height: 2 DIPs taller, kept within
 // 28..40, so 紧凑/标准/宽松 (28/34/40) give 30/36/40 (#27).
 int MenuRowHeightDip(int list_row_height) noexcept;
+// Interface font size: only 90/100/112/125 are kept, anything else is 100.
+int NormalizeUiFontScale(int percent) noexcept;
+// List row height actually used: the chosen density, raised so larger
+// interface fonts still fit (112% -> at least 32, 125% -> at least 35).
+int EffectiveRowHeightDip(int list_row_height, int ui_font_scale) noexcept;
 
 } // namespace pulse::app

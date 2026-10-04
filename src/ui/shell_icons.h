@@ -1,6 +1,7 @@
 // shell_icons.h — Windows Shell image-list icons for file rows.
 #pragma once
 #include "ui_compositor.h"
+#include "icon_artwork_bounds.h"
 
 #include <string>
 #include <unordered_map>
@@ -12,6 +13,7 @@
 #include <unordered_set>
 #include <vector>
 #include <deque>
+#include <optional>
 
 struct IImageList;
 struct IWICImagingFactory;
@@ -49,6 +51,11 @@ public:
     ID2D1Bitmap* CachedBitmapFor(const std::wstring& path, const std::wstring& name,
                                  bool is_dir, DWORD attrs, float desired_dips);
 
+    // Matches CachedBitmapFor's selected bitmap. Unknown/empty artwork uses
+    // the full normalized rectangle; this only inspects cached metadata.
+    D2D1_RECT_F CachedArtworkBounds(const std::wstring& path, const std::wstring& name,
+                                   bool is_dir, DWORD attrs, float desired_dips);
+
     // Queues the icon BitmapFor would return for a background conversion
     // (image-list extraction + WIC pixel conversion on the worker thread);
     // the UI thread later only uploads the finished pixels. Cheap to call
@@ -64,10 +71,13 @@ private:
     int GenericIndex(const std::wstring& name, bool is_dir, DWORD attrs);
     void RequestExact(const std::wstring& path);
     ID2D1Bitmap* BitmapForIndex(int index, int list_id);
-    ComPtr<ID2D1Bitmap> BitmapFromIcon(HICON icon);
+    ComPtr<ID2D1Bitmap> BitmapFromIcon(HICON icon, IconArtworkBounds& bounds);
     // Worker-converted pixels for key, uploaded to a D2D bitmap and cached.
     ID2D1Bitmap* UploadReady(uint64_t key);
-    ID2D1Bitmap* StoreBitmap(uint64_t key, ComPtr<ID2D1Bitmap> bitmap);
+    ID2D1Bitmap* StoreBitmap(uint64_t key, ComPtr<ID2D1Bitmap> bitmap,
+                            IconArtworkBounds bounds = {});
+    std::optional<uint64_t> CachedBitmapKey(const std::wstring& path,
+        const std::wstring& name, bool is_dir, float desired_dips, bool upload_ready);
     void StartWorkerLocked();
     void WorkerLoop();
     static bool NeedsExactIcon(const std::wstring& name, bool is_dir,
@@ -79,6 +89,7 @@ private:
     std::unordered_map<int, IImageList*> image_lists_;
     ComPtr<IWICImagingFactory> wic_;
     std::unordered_map<uint64_t, ComPtr<ID2D1Bitmap>> bitmaps_;
+    std::unordered_map<uint64_t, IconArtworkBounds> artwork_bounds_;
     std::unordered_map<std::wstring, int> generic_index_;
 
     std::mutex mutex_;
@@ -93,6 +104,7 @@ private:
         UINT width = 0;
         UINT height = 0;
         std::vector<uint8_t> data;  // 32bpp premultiplied BGRA
+        IconArtworkBounds bounds;
     };
     std::deque<uint64_t> convert_queue_;
     std::unordered_set<uint64_t> convert_pending_;

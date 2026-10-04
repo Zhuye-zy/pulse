@@ -1,0 +1,1527 @@
+{
+  "summary": {
+    "schema": 1,
+    "referenceEngine": "KaTeX",
+    "referenceVersion": "0.16.22",
+    "corpusSha256": "3fffd2405294b04138222c049d1e94c0cfc6ec8cba534291674e3abb090aff6c",
+    "nativeInput": "build/math-native-compat.tsv",
+    "total": 83,
+    "nativeInputSha256": "9c4ff6613e69f45cc41f15da4f2637a963ae302425348fd88d2c8342e38958ff",
+    "referenceInputSha256": "b647ff7c6e187615038cb9391c07df9eb7a79982fadcd18b246854966024b816",
+    "bothAccept": 57,
+    "documentedNativeFallback": 12,
+    "bothReject": 14,
+    "problemCases": [],
+    "structureReviewCases": [],
+    "extraNativeIds": [],
+    "extraReferenceIds": [],
+    "comparedStructures": [
+      "fraction / mfrac",
+      "radical / msqrt + mroot",
+      "environment / mtable",
+      "phantom / mphantom",
+      "brace / stretchy brace mo"
+    ],
+    "note": "Matching counts do not prove AST semantics, glyph fidelity or visual equivalence. Script, accent and operator-limit MathML overlaps are intentionally not equated."
+  },
+  "rows": [
+    {
+      "id": "quadratic_roots",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:1,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:6,mn:5,mo:5,mrow:5,msqrt:1,msub:1,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 244.413,
+        "height": 81.8068,
+        "baseline": 55.6994
+      }
+    },
+    {
+      "id": "normal_density",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:1,script:2,environment:0,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:8,mn:5,mo:10,mrow:6,msqrt:1,msup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 360.707,
+        "height": 89.6629,
+        "baseline": 52.7621
+      }
+    },
+    {
+      "id": "bayes_rule",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:10,mo:11,mrow:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 294.479,
+        "height": 68.0762,
+        "baseline": 41.9688
+      }
+    },
+    {
+      "id": "binomial_probability",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:10,mn:1,mo:10,mrow:3,msup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 352.793,
+        "height": 70.1694,
+        "baseline": 43.0154
+      }
+    },
+    {
+      "id": "geometric_series",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:3,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:7,mn:4,mo:6,mrow:5,msup:2,munderover:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 190.854,
+        "height": 86.995,
+        "baseline": 56.1652
+      }
+    },
+    {
+      "id": "fourier_transform",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:12,mo:8,mrow:3,msubsup:1,msup:1,mtext:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 264.835,
+        "height": 58.538,
+        "baseline": 43.5142
+      }
+    },
+    {
+      "id": "second_derivative",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:7,mn:1,mo:8,mrow:2,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 250.106,
+        "height": 39.5841,
+        "baseline": 33.2521
+      }
+    },
+    {
+      "id": "gradient_descent",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:3,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:9,mn:1,mo:5,mrow:2,msub:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 215.949,
+        "height": 36.4291,
+        "baseline": 23.8047
+      }
+    },
+    {
+      "id": "matrix_system",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:3,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:2,mn:6,mo:8,mrow:5,mstyle:8,mtable:3,mtd:8,mtr:6",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 262.991,
+        "height": 66.2462,
+        "baseline": 39.9786
+      }
+    },
+    {
+      "id": "determinant_identity",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:9,mo:5,mrow:2,mstyle:4,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 251.579,
+        "height": 66.2462,
+        "baseline": 39.9786
+      }
+    },
+    {
+      "id": "piecewise_loss",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:0,script:1,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:12,mn:6,mo:7,mrow:5,mstyle:4,msup:1,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 293.854,
+        "height": 154.466,
+        "baseline": 84.0884
+      }
+    },
+    {
+      "id": "aligned_derivation",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:6,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:12,mn:8,mo:12,mrow:6,mstyle:4,msup:6,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 280.117,
+        "height": 83.1683,
+        "baseline": 48.4396
+      }
+    },
+    {
+      "id": "nested_continued_fraction",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:3,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:3,mi:1,mn:7,mo:4,mrow:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 186.289,
+        "height": 103.664,
+        "baseline": 41.9688
+      }
+    },
+    {
+      "id": "root_and_scripts",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:1,script:3,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:7,mn:3,mo:3,mroot:1,mrow:3,msub:1,msubsup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 182.955,
+        "height": 58.404,
+        "baseline": 43.5023
+      }
+    },
+    {
+      "id": "constrained_sum",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:4,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:11,mn:1,mo:6,mrow:3,mstyle:3,msub:3,mtable:1,mtd:2,mtr:2,munder:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 172.102,
+        "height": 88.0645,
+        "baseline": 34.0668
+      }
+    },
+    {
+      "id": "annotated_limit",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:4,mn:3,mo:9,mrow:4,msup:1,munder:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 238.38,
+        "height": 62.3021,
+        "baseline": 33.8717
+      }
+    },
+    {
+      "id": "convergence_arrow",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:1,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:5,mo:2,mpadded:2,mrow:2,msub:1,mtext:1,munderover:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 172.108,
+        "height": 47.7843,
+        "baseline": 34.7298
+      }
+    },
+    {
+      "id": "tensor_indices",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:5,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:17,mo:2,mrow:3,msubsup:5",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 218.657,
+        "height": 46.5952,
+        "baseline": 33.2521
+      }
+    },
+    {
+      "id": "vector_accents",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:1,script:2,environment:0,fence:0,accent:4,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:7,mn:4,mo:8,mover:4,mrow:3,mspace:1,msqrt:1,msubsup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 279.944,
+        "height": 99.6373,
+        "baseline": 51.2296
+      }
+    },
+    {
+      "id": "sample_mean",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:4,environment:0,fence:0,accent:2,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:11,mn:3,mo:13,mover:2,mrow:2,mspace:1,msub:3,munderover:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 406.218,
+        "height": 86.995,
+        "baseline": 56.1652
+      }
+    },
+    {
+      "id": "boxed_energy",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:1,environment:0,fence:0,accent:0,decoration:1,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,menclose:1,mfrac:1,mi:6,mn:3,mo:2,mrow:2,mstyle:3,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 222.651,
+        "height": 78.7562,
+        "baseline": 47.3088
+      }
+    },
+    {
+      "id": "cancelled_ratio",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:0,accent:0,decoration:2,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,menclose:2,mfrac:1,mi:4,mn:2,mo:5,mrow:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 190.802,
+        "height": 68.0762,
+        "baseline": 41.9688
+      }
+    },
+    {
+      "id": "array_alignment",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:6,mo:4,mrow:2,mstyle:6,mtable:1,mtd:6,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 132.868,
+        "height": 64.2734,
+        "baseline": 38.9922
+      }
+    },
+    {
+      "id": "inline_style_fraction",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:5,mo:2,mrow:1,mstyle:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 125.643,
+        "height": 68.0762,
+        "baseline": 41.9688
+      }
+    },
+    {
+      "id": "nested_style_scope",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:5,mn:2,mo:3,mrow:2,mstyle:2,msub:1,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 178.646,
+        "height": 68.0762,
+        "baseline": 41.9688
+      }
+    },
+    {
+      "id": "annotated_equality",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:0,accent:2,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:7,mn:1,mo:10,mover:1,mrow:2,mspace:1,msup:1,mtext:1,munder:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 235.622,
+        "height": 74.3335,
+        "baseline": 45.9031
+      }
+    },
+    {
+      "id": "modular_equation",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:6,mn:2,mo:4,mrow:3,mspace:3,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 195.831,
+        "height": 39.5841,
+        "baseline": 33.2521
+      }
+    },
+    {
+      "id": "text_with_spaces",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:10,mn:1,mo:7,mrow:3,mspace:1,msubsup:1,mtext:4",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 386.597,
+        "height": 50.2743,
+        "baseline": 33.2521
+      }
+    },
+    {
+      "id": "calligraphic_space",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:9,mn:1,mo:9,mrow:2,msub:1,munderover:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "underbrace_derivation",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:1,phantom:0",
+      "referenceMathmlTags": "math:1,mi:4,mn:3,mo:7,mrow:3,msub:1,mtext:1,munder:2",
+      "referenceConstructs": "brace:1,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 256.378,
+        "height": 66.5165,
+        "baseline": 23.8047
+      }
+    },
+    {
+      "id": "explicit_spacing",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:3,mo:1,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 127.634,
+        "height": 30.1367,
+        "baseline": 23.8047
+      }
+    },
+    {
+      "id": "colored_error",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:5,mo:2,mrow:1,mstyle:1,msub:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "equation_number",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:3,mn:1,mo:1,mrow:1,msup:1,mtable:1,mtd:4,mtext:1,mtr:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "macro_definition",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:2,mn:1,mrow:1,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "phantom_alignment",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:1",
+      "referenceMathmlTags": "math:1,mi:3,mn:2,mo:3,mphantom:1,mrow:5,mstyle:4,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 105.836,
+        "height": 64.2734,
+        "baseline": 38.9922
+      }
+    },
+    {
+      "id": "array_vertical_rules",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:4,mstyle:4,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 53.4875,
+        "height": 65.832,
+        "baseline": 39.7715
+      }
+    },
+    {
+      "id": "unclosed_fraction",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "duplicate_superscript",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "missing_radicand",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "mismatched_environment",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "missing_right_fence",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "unknown_command",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "stray_alignment",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "array_column_overflow",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "ruled_augmented_system",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:1,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,menclose:1,mn:6,mo:3,mrow:2,mstyle:6,mtable:1,mtd:6,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 132.123,
+        "height": 76.9838,
+        "baseline": 45.3474
+      }
+    },
+    {
+      "id": "double_rule_table",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,menclose:1,mi:2,mn:5,mrow:1,mstyle:6,msup:1,mtable:1,mtd:6,mtr:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 88.9051,
+        "height": 131.369,
+        "baseline": 72.54
+      }
+    },
+    {
+      "id": "array_row_gap_em",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:1,script:1,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:7,mn:4,mo:9,mrow:5,msqrt:1,mstyle:6,msup:1,mtable:1,mtd:6,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 193.25,
+        "height": 112.558,
+        "baseline": 63.1345
+      }
+    },
+    {
+      "id": "array_row_gap_ex_pt",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:0,script:1,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:3,mn:6,mstyle:6,msub:1,mtable:1,mtd:6,mtr:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 66.2461,
+        "height": 161.399,
+        "baseline": 87.5549
+      }
+    },
+    {
+      "id": "ruled_nested_matrix",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:1,script:1,environment:2,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,menclose:1,mfrac:1,mi:5,mn:5,mo:1,mrow:1,msqrt:1,mstyle:8,msup:1,mtable:2,mtd:8,mtr:4",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 166.302,
+        "height": 131.64,
+        "baseline": 72.6754
+      }
+    },
+    {
+      "id": "conditional_middle",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:8,mo:9,mrow:4",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 250.732,
+        "height": 68.0762,
+        "baseline": 41.9688
+      }
+    },
+    {
+      "id": "set_middle_condition",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:4,mn:2,mo:6,mrow:2,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 233.028,
+        "height": 40.8232,
+        "baseline": 33.8717
+      }
+    },
+    {
+      "id": "multiple_middle_fences",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:1,script:0,environment:0,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:5,mo:5,mrow:2,msqrt:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 257.444,
+        "height": 70.1694,
+        "baseline": 43.0154
+      }
+    },
+    {
+      "id": "nested_middle_fences",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:2,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:5,mn:1,mo:8,mrow:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 279.764,
+        "height": 70.1694,
+        "baseline": 43.0154
+      }
+    },
+    {
+      "id": "underbrace_fraction_sum",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:1,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:4,mn:3,mo:6,mrow:3,mtext:1,munder:2",
+      "referenceConstructs": "brace:1,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 221.559,
+        "height": 104.456,
+        "baseline": 41.9688
+      }
+    },
+    {
+      "id": "overbrace_power_product",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:1,phantom:0",
+      "referenceMathmlTags": "math:1,mi:6,mo:4,mover:2,mrow:3,msup:1,mtext:1",
+      "referenceConstructs": "brace:1,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 152.438,
+        "height": 66.5165,
+        "baseline": 60.1845
+      }
+    },
+    {
+      "id": "brace_opposite_scripts",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:2,phantom:0",
+      "referenceMathmlTags": "math:1,mi:8,mn:1,mo:6,mover:2,mrow:3,msubsup:1,munder:1",
+      "referenceConstructs": "brace:2,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 225.973,
+        "height": 102.896,
+        "baseline": 60.1845
+      }
+    },
+    {
+      "id": "nested_brace_labels",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:2,phantom:0",
+      "referenceMathmlTags": "math:1,mi:7,mo:6,mover:2,mrow:3,munder:2",
+      "referenceConstructs": "brace:2,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 193.196,
+        "height": 102.896,
+        "baseline": 60.1845
+      }
+    },
+    {
+      "id": "phantom_fraction_alignment",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:0,script:0,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:1",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:8,mo:4,mphantom:1,mrow:4,mstyle:4,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 121.274,
+        "height": 140.152,
+        "baseline": 76.9316
+      }
+    },
+    {
+      "id": "horizontal_phantom_spacing",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:1",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:5,mo:2,mpadded:1,mphantom:1,mrow:1",
+      "referenceConstructs": "brace:0,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 131.686,
+        "height": 30.1367,
+        "baseline": 23.8047
+      }
+    },
+    {
+      "id": "vertical_phantom_height",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:1",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:5,mn:2,mo:2,mpadded:1,mphantom:1,mrow:2,msub:1,msup:1",
+      "referenceConstructs": "brace:0,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 129.578,
+        "height": 53.1775,
+        "baseline": 40.5531
+      }
+    },
+    {
+      "id": "signed_hspace_equation",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:4,mo:2,mrow:1,mspace:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 124.286,
+        "height": 30.1367,
+        "baseline": 23.8047
+      }
+    },
+    {
+      "id": "mixed_unit_hspace",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:1,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:5,mo:2,mrow:1,mspace:2,msqrt:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 181.912,
+        "height": 68.0762,
+        "baseline": 41.9688
+      }
+    },
+    {
+      "id": "brace_phantom_alignment",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:1,phantom:1",
+      "referenceMathmlTags": "math:1,mi:4,mo:4,mover:2,mpadded:1,mphantom:1,mrow:2,mtext:1",
+      "referenceConstructs": "brace:1,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 158.622,
+        "height": 66.5165,
+        "baseline": 60.1845
+      }
+    },
+    {
+      "id": "ruled_brace_phantom_array",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:2,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:1,phantom:1",
+      "referenceMathmlTags": "math:1,menclose:1,mfrac:1,mi:8,mn:1,mo:3,mphantom:1,mrow:4,mspace:1,mstyle:4,msup:1,mtable:1,mtd:4,mtr:2,munder:2",
+      "referenceConstructs": "brace:1,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 119.455,
+        "height": 152.93,
+        "baseline": 83.3207
+      }
+    },
+    {
+      "id": "middle_outside_fence",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "missing_middle_delimiter",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "hspace_missing_unit",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "hspace_malformed_decimal",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "array_hline_inside_cell",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "array_row_gap_bad_unit",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "array_negative_row_gap",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:2,mstyle:2,mtable:1,mtd:2,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "array_triple_vertical_rules",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:4,mstyle:4,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "hspace_boundary_em",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:1,mn:2,mo:2,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 583.566,
+        "height": 30.1367,
+        "baseline": 23.8047
+      }
+    },
+    {
+      "id": "hspace_boundary_ex",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:1,mn:2,mo:2,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 551.691,
+        "height": 30.1367,
+        "baseline": 23.8047
+      }
+    },
+    {
+      "id": "hspace_boundary_pt",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:1,mn:2,mo:2,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 369.237,
+        "height": 30.1367,
+        "baseline": 23.8047
+      }
+    },
+    {
+      "id": "hspace_over_budget_em",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:3,mo:2,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "hspace_over_budget_ex",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:3,mo:2,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "hspace_over_budget_pt",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:3,mo:2,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "array_row_gap_over_budget",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:2,mstyle:2,mtable:1,mtd:2,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "array_triple_horizontal_rules",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,menclose:1,mi:4,mrow:1,mstyle:4,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    },
+    {
+      "id": "pure_vertical_phantom",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:1",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:2,mpadded:1,mphantom:1,mrow:1",
+      "referenceConstructs": "brace:0,phantom:1",
+      "metricsException": {
+        "source": "\\vphantom{\\frac{a}{b}}",
+        "allowZeroWidth": true,
+        "reason": "An intentional vertical phantom reserves height and baseline but has zero width and no ink. All other positive-height and finite-metric checks remain required."
+      },
+      "nativeMetrics": {
+        "width": 2,
+        "height": 68.0762,
+        "baseline": 41.9688
+      }
+    },
+    {
+      "id": "pure_phantom",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:1",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:2,mphantom:1,mrow:1",
+      "referenceConstructs": "brace:0,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 28.8519,
+        "height": 68.0762,
+        "baseline": 41.9688
+      }
+    },
+    {
+      "id": "pure_hspace",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      }
+    }
+  ]
+}

@@ -317,6 +317,7 @@ bool ContentResultStore::SameContents(const ContentResultStore& other, HANDLE ca
     return false;
 }
 uint64_t ContentResultStore::Revision() const { return impl_->revision; }
+uint64_t ContentResultStore::OrderRevision() const { return impl_->page_epoch; }
 DWORD ContentResultStore::Error() const { return impl_->error; }
 bool ContentResultStore::Filtering() const { return impl_->filtering; }
 bool ContentResultStore::Sorting() const { return impl_->sorting; }
@@ -429,8 +430,8 @@ void ContentResultStore::SetSort(ContentResultSort sort, bool descending) {
         p->Notify();
     });
 }
-void ContentResultStore::Resolve(std::vector<int> indices,bool all,size_t count,std::function<void(Selection)> complete) {
-    const auto epoch=impl_->page_epoch.load();
+void ContentResultStore::Resolve(std::vector<int> indices,bool all,size_t count,std::function<void(Selection)> complete,uint64_t expected_order) {
+    const auto epoch=expected_order == UINT64_MAX ? impl_->page_epoch.load() : expected_order;
     impl_->Enqueue([p=impl_,indices=std::move(indices),all,count,epoch,complete=std::move(complete)]() mutable {
         Selection result;
         {
@@ -452,6 +453,24 @@ void ContentResultStore::Resolve(std::vector<int> indices,bool all,size_t count,
             }
         }
         complete(std::move(result));
+    });
+}
+void ContentResultStore::FindPaths(std::vector<std::wstring> paths, std::function<void(std::vector<int>)> complete) {
+    const auto epoch=impl_->page_epoch.load();
+    impl_->Enqueue([p=impl_,paths=std::move(paths),epoch,complete=std::move(complete)] {
+        std::vector<int> indices;
+        {
+            std::lock_guard lock(p->io);
+            if (!p->stopping && epoch==p->page_epoch && p->Open()) {
+                Statement read(p->db,"SELECT v.pos FROM visible v JOIN hits h ON h.seq=v.seq WHERE h.path=?1 LIMIT 1");
+                if (read.p) for (const auto& path : paths) {
+                    read.Text(1,path);
+                    if (sqlite3_step(read.p)==SQLITE_ROW) indices.push_back(sqlite3_column_int(read.p,0));
+                    read.Reset();
+                }
+            }
+        }
+        complete(std::move(indices));
     });
 }
 void ContentResultStore::FindPath(std::wstring path,std::function<void(int)> complete) {

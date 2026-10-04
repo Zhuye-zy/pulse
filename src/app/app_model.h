@@ -6,6 +6,7 @@
 #include "../ui/ui_renderer.h"
 #include "places.h"
 #include "column_view_model.h"
+#include "explorer_handoff.h"
 #include "entry_order_hold.h"
 #include "pane_header_animation.h"
 #include "../index/content_result_store.h"
@@ -33,6 +34,7 @@ std::wstring NavigationReturnChildName(const std::wstring& from_path,
                                        const std::wstring& destination_path);
 
 struct Tab {
+    std::unique_ptr<ExplorerNavigationLease> explorer_handoff;
     std::wstring current_path;
     std::stack<std::wstring> back_stack;
     std::stack<std::wstring> forward_stack;
@@ -73,6 +75,8 @@ struct Tab {
     std::wstring virtual_title; // tag/search views; empty for real folders
     std::wstring banner_title;
     std::wstring banner_message;
+    std::wstring network_live_root;        // #74: banner offers adding this share to the network index
+    std::wstring network_live_added_root;  // #74: share added from the banner, crawl pending
     bool net_readonly = false;
     uint64_t cache_unix = 0;
     int recent_filter = 0; // RecentFilter; transient per tab.
@@ -98,6 +102,10 @@ struct Tab {
     bool refresh_keeps_order = false;      // the pending refresh merges into the shown order
     bool order_held = false;               // rows may be out of sort order
     std::vector<EntryRename> held_renames; // Pulse renames not yet seen by a refresh
+    // Size order (#58): fingerprint of the folder totals the rows were sorted
+    // with, and when they last moved for new totals (GetTickCount64).
+    uint64_t folder_size_signature = 0;
+    uint64_t folder_size_resorted_at = 0;
     ColumnStripState column_strip; // listings shown beside the list in column view
     std::wstring git_root;
     std::shared_ptr<std::vector<fs::DirEntry>> search_entries;
@@ -159,6 +167,9 @@ struct Tab {
     std::wstring content_focus_path;
     uint64_t content_focus_selection = UINT64_MAX;
     uint64_t content_focus_revision = UINT64_MAX;
+    uint64_t content_order_revision = 0;
+    std::vector<std::wstring> content_selected_paths;
+    void RememberContentSelection();
     std::wstring search_origin_path;
     bool search_origin_valid = false;
     bool search_retaining_results = false;

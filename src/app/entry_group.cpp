@@ -378,6 +378,7 @@ void FolderGroupPrefs::AppendJson(std::wstring& out) const {
         }
         out += L"]";
     }
+    if (default_) out += L",\n  \"folder_group_default\":" + std::to_wstring(static_cast<int>(*default_));
 }
 
 void FolderGroupPrefs::ReadJson(const std::wstring& input) {
@@ -385,6 +386,22 @@ void FolderGroupPrefs::ReadJson(const std::wstring& input) {
     for (int by = 0; by <= 6; ++by)
         for (const auto& path : json::ExtractStringArray(input, GroupJsonKey(by)))
             Set(path, GroupByFromInt(by));
+    const int fallback = json::ExtractInt(input, L"folder_group_default", -1);
+    if (fallback >= 0 && fallback <= 5) default_ = GroupByFromInt(fallback);
+}
+
+GroupBy FolderGroupPrefs::Resolve(const std::wstring& path) const {
+    const auto key = GroupFolderKey(path);
+    if (!key.empty()) {
+        if (const auto it = groups_.find(key); it != groups_.end()) return it->second;
+        if (default_ && !key.starts_with(L"pulse:")) return *default_;
+    }
+    return DefaultGroupFor(path);
+}
+
+void FolderGroupPrefs::ApplyToAll(GroupBy by) {
+    default_ = by;
+    std::erase_if(groups_, [](const auto& item) { return !item.first.starts_with(L"pulse:"); });
 }
 
 GroupBy DefaultGroupFor(const std::wstring& path) {

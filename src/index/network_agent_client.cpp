@@ -82,11 +82,11 @@ bool NetworkAgentClient::EnsureAgent() {
 }
 
 bool NetworkAgentClient::OpenPipe(HANDLE& pipe) {
-    pipe = CreateFileW(agent::kPipeName, GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+    pipe = CreateFileW(pipe_name_.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
                        OPEN_EXISTING, 0, nullptr);
     if (pipe != INVALID_HANDLE_VALUE) return true;
-    if (GetLastError() == ERROR_PIPE_BUSY) WaitNamedPipeW(agent::kPipeName, 1000);
-    pipe = CreateFileW(agent::kPipeName, GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+    if (GetLastError() == ERROR_PIPE_BUSY) WaitNamedPipeW(pipe_name_.c_str(), 1000);
+    pipe = CreateFileW(pipe_name_.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
                        OPEN_EXISTING, 0, nullptr);
     return pipe != INVALID_HANDLE_VALUE;
 }
@@ -113,6 +113,31 @@ bool NetworkAgentClient::Request(uint32_t type, uint32_t id,
         active_pipe_ = INVALID_HANDLE_VALUE;
         CloseHandle(pipe);
     };
+    // Cancel a silent peer on the owning I/O thread; retain normal handle ownership.
+    struct Deadline {
+        HANDLE thread = nullptr;
+        std::mutex mutex;
+        std::condition_variable_any changed;
+        std::jthread worker;
+        Deadline() {
+            if (!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(),
+                                 &thread, 0, FALSE, DUPLICATE_SAME_ACCESS)) return;
+            worker = std::jthread([this](std::stop_token stop) {
+                std::unique_lock lock(mutex);
+                changed.wait_for(lock, stop, std::chrono::seconds(5), [] { return false; });
+                while (!stop.stop_requested()) {
+                    CancelSynchronousIo(thread);
+                    changed.wait_for(lock, stop, std::chrono::milliseconds(10), [] { return false; });
+                }
+            });
+        }
+        ~Deadline() {
+            worker.request_stop();
+            if (worker.joinable()) worker.join();
+            if (thread) CloseHandle(thread);
+        }
+    } deadline;
+    if (!deadline.thread) { close_pipe(); return false; }
     const MsgHeader header = agent::MakeHeader(type, id, static_cast<uint32_t>(payload.size()));
     const bool sent = PipeWrite(pipe, reinterpret_cast<const uint8_t*>(&header), sizeof(header)) &&
                       (payload.empty() || PipeWrite(pipe, payload.data(), static_cast<DWORD>(payload.size())));
@@ -199,26 +224,30 @@ void NetworkAgentClient::SearchLoop() {
 void NetworkAgentClient::SearchRequest(Query query, uint32_t id) {
     uint32_t response_type = 0;
     std::vector<uint8_t> payload;
-    if (!Request(agent::REQ_SEARCH, id, QueryPayload(query), response_type, payload) ||
-        response_type != agent::RSP_SEARCH) return;
-    {std::lock_guard lock(search_mu_);auto current=session_requests_.find(query.session_id);if(current==session_requests_.end()||current->second!=id) return;}
-    PayloadReader reader(payload.data(), payload.size());
-    uint32_t total = 0, count = 0;
-    if (!reader.GetU32(total) || !reader.GetU32(count)) return;
     SearchResult result;
-    result.total = total;
-    result.hits.reserve(count);
-    for (uint32_t i = 0; i < count; ++i) {
-        Hit hit;
-        uint32_t flags = 0, size_lo = 0, size_hi = 0, time_lo = 0, time_hi = 0;
-        if (!reader.GetString(hit.path) || !reader.GetString(hit.name) || !reader.GetU32(flags) ||
-            !reader.GetU32(size_lo) || !reader.GetU32(size_hi) ||
-            !reader.GetU32(time_lo) || !reader.GetU32(time_hi)) return;
-        hit.is_dir = (flags & 1u) != 0;
-        hit.size = (static_cast<uint64_t>(size_hi) << 32) | size_lo;
-        hit.mtime = (static_cast<uint64_t>(time_hi) << 32) | time_lo;
-        result.hits.push_back(std::move(hit));
-    }
+    const bool received = Request(agent::REQ_SEARCH, id, QueryPayload(query), response_type, payload);
+    {std::lock_guard lock(search_mu_);auto current=session_requests_.find(query.session_id);if(current==session_requests_.end()||current->second!=id) return;}
+    auto decode = [&] {
+        if (!received || response_type != agent::RSP_SEARCH) return false;
+        PayloadReader reader(payload.data(), payload.size());
+        uint32_t total = 0, count = 0;
+        if (!reader.GetU32(total) || !reader.GetU32(count) || count > payload.size() / 28) return false;
+        result.total = total;
+        result.hits.reserve(count);
+        for (uint32_t i = 0; i < count; ++i) {
+            Hit hit;
+            uint32_t flags = 0, size_lo = 0, size_hi = 0, time_lo = 0, time_hi = 0;
+            if (!reader.GetString(hit.path) || !reader.GetString(hit.name) || !reader.GetU32(flags) ||
+                !reader.GetU32(size_lo) || !reader.GetU32(size_hi) ||
+                !reader.GetU32(time_lo) || !reader.GetU32(time_hi)) return false;
+            hit.is_dir = (flags & 1u) != 0;
+            hit.size = (static_cast<uint64_t>(size_hi) << 32) | size_lo;
+            hit.mtime = (static_cast<uint64_t>(time_hi) << 32) | time_lo;
+            result.hits.push_back(std::move(hit));
+        }
+        return true;
+    };
+    if (!decode()) { result = {}; result.error = received ? ERROR_INVALID_DATA : ERROR_CONNECTION_ABORTED; }
     {
         std::lock_guard<std::mutex> lock(mu_);
         results_[id] = std::move(result);

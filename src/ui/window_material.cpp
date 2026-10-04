@@ -424,7 +424,10 @@ bool ApplyWindowEffect(HWND hwnd, WindowEffect effect, bool dark) noexcept {
         const COLORREF caption = dark ? RGB(0x1A, 0x1A, 0x1A) : RGB(0xF3, 0xF3, 0xF3);
         DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &caption, sizeof(caption));
     } else {
-        const COLORREF caption = 0xFFFFFFFFu;
+        // With "Show accent color on title bars" on, DWM tints only its own
+        // caption height, which is shorter than our title bar, so the tint
+        // stopped halfway down the tabs (#20). Keep the backdrop untinted.
+        const COLORREF caption = DWMWA_COLOR_NONE;
         DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &caption, sizeof(caption));
     }
 

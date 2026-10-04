@@ -1,5 +1,7 @@
+#include <thread>
 // app_navigation.cpp — extracted from app_main.cpp.
 #include "app_internal.h"
+#include "shell_window_sync.h"
 #include "app_column_view.h"
 #include "content_navigation.h"
 #include "../ui/lumatext_renderer.h"
@@ -26,6 +28,7 @@
 #include "search_refresh_log.h"
 #include "link_resolve.h"
 #include "startup_location.h"
+#include "last_tab_close.h"
 #include "resource.h"
 #include "../ops/clipboard.h"
 #include "../ipc/ctx_menu_util.h"
@@ -213,6 +216,121 @@ index::Query MakeSearchPageQuery(const app::Tab& tab, const std::wstring& rest,
     return q;
 }
 
+// #74: the local index never holds SMB paths, and the network index only
+// answers for roots added in Settings whose crawl has finished. A name search
+// scoped anywhere else on the network walks the folder live, like Explorer.
+static bool NeedsLiveNetworkSearch(AppState& s, const index::Query& query) {
+    if (query.path_prefix.empty() || fs::IsVirtualPath(query.path_prefix)) return false;
+    if (!index::IsNetworkFolderPath(query.path_prefix)) return false;
+    return !index::NetworkRootsCover(s.networkIndex.Roots(), query.path_prefix, true);
+}
+
+static void PostLiveNetworkProgress(HWND hwnd, const std::shared_ptr<LiveNetworkSearch>& live) {
+    auto* holder = new std::shared_ptr<LiveNetworkSearch>(live);
+    if (!PostMessageW(hwnd, WM_NETWORK_LIVE_SEARCH, 0, reinterpret_cast<LPARAM>(holder)))
+        delete holder;
+}
+
+void DropLiveNetworkSearch(AppState& s) {
+    if (s.liveNetworkSearch) s.liveNetworkSearch->cancel = true;
+    s.liveNetworkSearch.reset();
+}
+
+static void StartLiveNetworkSearch(AppState& s, const index::Query& query, uint32_t id) {
+    const std::wstring key = query.needle + L'\n' + query.path_prefix +
+                             (query.folders_only ? L"\n1" : L"\n0");
+    if (auto live = s.liveNetworkSearch; live && live->key == key) {
+        // Same query (next page, new sort): answer from the walk so far; a
+        // running walk keeps posting progress for the newest request.
+        live->latest_id = id;
+        PostLiveNetworkProgress(s.hwnd, live);
+        return;
+    }
+    DropLiveNetworkSearch(s);
+    auto live = std::make_shared<LiveNetworkSearch>();
+    live->key = key;
+    live->folder = query.path_prefix;
+    live->latest_id = id;
+    s.liveNetworkSearch = live;
+    std::thread([hwnd = s.hwnd, live, needle = query.needle, folders_only = query.folders_only] {
+        index::LiveNetworkWalk(live->folder, needle, folders_only, live->matches, live->mutex,
+            [&live] { return live->cancel.load(); },
+            [&] { PostLiveNetworkProgress(hwnd, live); });
+        if (!live->cancel.load()) PostLiveNetworkProgress(hwnd, live);
+    }).detach();
+}
+
+void AcceptLiveNetworkProgress(AppState& s, const std::shared_ptr<LiveNetworkSearch>& live) {
+    if (!live || live != s.liveNetworkSearch) return;
+    const uint32_t id = live->latest_id.load();
+    const auto found = s.pendingIndexSearches.find(id);
+    if (found == s.pendingIndexSearches.end() || found->second.network_ready) return;
+    const index::Query& asked = found->second.query;
+    index::Query provider = asked;
+    provider.offset = 0;
+    provider.limit = (std::min)(index::kSearchPageCap,
+        asked.offset > index::kSearchPageCap - (std::min)(asked.limit, index::kSearchPageCap)
+            ? index::kSearchPageCap : asked.offset + asked.limit);
+    index::SearchResult result;
+    bool complete = false;
+    {
+        std::lock_guard<std::mutex> lock(live->mutex);
+        result = index::SelectLiveNetworkHits(provider, live->matches);
+        complete = live->matches.complete;
+    }
+    AcceptIndexProviderResult(s, id, std::move(result), true, complete);
+}
+
+static void ApplyLiveNetworkBanner(AppState& s, uint32_t id, const std::wstring& root,
+                                   bool done, DWORD error) {
+    ForEachPane(s, [&](app::Pane& pane) {
+        app::Tab* tab = pane.ActiveTab();
+        if (!tab || tab->filename_live_generation != id) return;
+        if (error) {
+            tab->banner_title = l10n::Get(l10n::StringId::SearchIncomplete);
+            wchar_t text[128]{};
+            swprintf_s(text, l10n::Get(l10n::StringId::ErrorCodeFormat).c_str(), error);
+            tab->banner_message = text;
+            tab->network_live_root.clear();
+        } else {
+            // Mapped drives normalize to their share; the button adds that share.
+            const std::wstring share = index::NormalizeNetworkRoot(root);
+            const bool added = !share.empty() &&
+                (tab->network_live_added_root == share ||
+                 index::NetworkRootsCover(s.networkIndex.Roots(), share, false));
+            const bool drive = !fs::IsUncPath(root);
+            if (added) {
+                tab->banner_title = l10n::Get(l10n::StringId::NetworkLiveAdded);
+                tab->banner_message = l10n::Get(l10n::StringId::NetworkLiveAddedMessage);
+                tab->network_live_root.clear();
+            } else {
+                tab->banner_title = l10n::Get(l10n::StringId::NetworkLiveTitle);
+                tab->banner_message = l10n::Get(!done ? l10n::StringId::NetworkLiveRunning
+                    : drive ? l10n::StringId::NetworkLiveDoneDrive : l10n::StringId::NetworkLiveDone);
+                // A drive-letter scope keeps walking live even once its share
+                // is indexed, so only share paths offer the button.
+                tab->network_live_root = drive ? std::wstring{} : share;
+            }
+        }
+        InvalidateRect(s.hwnd, nullptr, FALSE);
+    });
+}
+
+void AddLiveNetworkRoot(AppState& s, app::Tab& tab) {
+    if (tab.network_live_root.empty()) return;
+    std::wstring error;
+    if (s.networkIndex.AddRoot(tab.network_live_root, &error)) {
+        tab.network_live_added_root = tab.network_live_root;
+        tab.network_live_root.clear();
+        tab.banner_title = l10n::Get(l10n::StringId::NetworkLiveAdded);
+        tab.banner_message = l10n::Get(l10n::StringId::NetworkLiveAddedMessage);
+    } else {
+        tab.banner_title = l10n::Get(l10n::StringId::NetworkLiveAddFailed);
+        tab.banner_message = error.empty() ? tab.network_live_root : error;
+    }
+    InvalidateRect(s.hwnd, nullptr, FALSE);
+}
+
 void DispatchIndexSearch(AppState& s, const index::Query& query, uint32_t id) {
     // Both providers return candidates from the beginning of their own ordering.
     // The UI then merges, globally sorts and applies the requested page offset.
@@ -225,11 +343,14 @@ void DispatchIndexSearch(AppState& s, const index::Query& query, uint32_t id) {
     std::erase_if(s.pendingIndexSearches, [&](const auto& item) { return item.second.query.session_id == query.session_id; });
     AppState::PendingIndexSearch pending;
     pending.query = query;
-    pending.network_ready = s.networkIndex.Roots().empty();
+    const bool live_network = NeedsLiveNetworkSearch(s, query);
+    pending.network_ready = !live_network && s.networkIndex.Roots().empty();
+    if (live_network) pending.live_network_root = query.path_prefix;
     if (!s.appPrefs.search_pinyin) pending.query.needle = L"nopinyin: " + pending.query.needle;
     s.pendingIndexSearches.emplace(id, std::move(pending));
     s.index.SearchAsync(provider_query, id);
-    s.networkIndex.SearchAsync(provider_query, id);
+    if (live_network) StartLiveNetworkSearch(s, provider_query, id);
+    else s.networkIndex.SearchAsync(provider_query, id);
 }
 
 void RequestSearchPage(AppState& s, app::Tab& tab, const std::wstring& rest,
@@ -273,6 +394,7 @@ void RequestSearchPage(AppState& s, app::Tab& tab, const std::wstring& rest,
         tab.loading = !tab.snapshot || tab.snapshot->empty();
         tab.banner_title.clear();
         tab.banner_message.clear();
+        tab.network_live_root.clear();
     } else {
         tab.search_loading_more = true;
     }
@@ -326,6 +448,14 @@ void ApplySearchHits(app::Tab& tab, const std::wstring& rest,
         e.mtime.dwHighDateTime = static_cast<DWORD>(hit.mtime >> 32);
         e.attrs = hit.is_dir ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
         entries.push_back(std::move(e));
+    }
+    if (result.error) {
+        tab.banner_title = l10n::Get(l10n::StringId::SearchIncomplete);
+        wchar_t error[128]{};
+        swprintf_s(error, l10n::Get(l10n::StringId::ErrorCodeFormat).c_str(), result.error);
+        tab.banner_message = error;
+    } else if (tab.banner_title == l10n::Get(l10n::StringId::SearchIncomplete)) {
+        tab.banner_title.clear(); tab.banner_message.clear();
     }
     tab.search_total = result.total;
     tab.search_next_offset = entries.size();
@@ -634,27 +764,34 @@ void DeliverIndexSearchResult(AppState& s, uint32_t id,
         } else {
             return;
         }
+        if (!s.networkIndex.Roots().empty() && tab->banner_title.empty())
+            tab->banner_message = l10n::Get(l10n::StringId::NetworkSearchSnapshot);
         applied = true;
         InvalidateRect(s.hwnd, nullptr, FALSE);
     });
 }
 
 void AcceptIndexProviderResult(AppState& s, uint32_t id,
-                                      index::SearchResult&& result, bool network) {
+                                      index::SearchResult&& result, bool network,
+                                      bool network_final) {
     auto found = s.pendingIndexSearches.find(id);
     if (found == s.pendingIndexSearches.end()) return;
     auto& pending = found->second;
     if (network) {
         pending.network = std::move(result);
-        pending.network_ready = true;
+        pending.network_ready = network_final;
     } else {
         pending.local = std::move(result);
         pending.local_ready = true;
     }
-    if (!pending.local_ready || !pending.network_ready) return;
+    if (!pending.local_ready) return;
     index::SearchResult merged = index::MergeSearchResults(pending.query, pending.local, pending.network);
-    if (!pending.query.subscribe) s.pendingIndexSearches.erase(found);
+    const std::wstring live_root = pending.live_network_root;
+    const bool network_done = pending.network_ready;
+    const DWORD live_error = pending.network.error;
+    if (!pending.query.subscribe && pending.network_ready) s.pendingIndexSearches.erase(found);
     DeliverIndexSearchResult(s, id, std::move(merged));
+    if (!live_root.empty()) ApplyLiveNetworkBanner(s, id, live_root, network_done, live_error);
 }
 
 void MaybePrefetchSearchPage(AppState& s) {
@@ -664,13 +801,29 @@ void MaybePrefetchSearchPage(AppState& s) {
         tab->search_next_offset >= tab->search_total ||
         tab->search_awaiting_content || tab->search_content_active) return;
     std::wstring kind, rest;
-    if (!app::ParsePulsePath(tab->current_path, &kind, &rest) || kind != L"search") return;
+    if (!app::ParsePulsePath(tab->current_path, &kind, &rest) ||
+        (kind != L"search" && kind != L"saved-search")) return;
     const D2D1_RECT_F list = ListRect(s);
     const float view_h = std::max(0.0f, list.bottom - list.top);
     const float max_scroll = MaxScrollForActivePane(s);
     const float scroll_y = std::max(tab->scroll_y, s.scrollTargetY);
-    if (scroll_y + view_h * 2.0f >= max_scroll)
-        RequestSearchPage(s, *tab, rest, false);
+    if (scroll_y + view_h * 2.0f < max_scroll) return;
+    if (kind == L"saved-search") {
+        wchar_t* end = nullptr;
+        const auto saved_index = wcstoull(rest.c_str(), &end, 10);
+        if (!end || *end || saved_index >= s.savedSearches.items().size()) return;
+        const auto& saved = s.savedSearches.items()[static_cast<size_t>(saved_index)];
+        if (saved.mode != app::SavedSearchMode::Name) return;
+        auto query = MakeSearchPageQuery(*tab, saved.query, 0);
+        query.path_prefix = saved.root;
+        query.limit = (std::min)(index::kSearchPageCap, tab->search_next_offset + index::kSearchUiPageSize);
+        if (query.limit <= tab->search_next_offset) return;
+        query.session_id = tab->search_session_id; query.subscribe = true;
+        const auto id = ++s.nextIndexReq;
+        tab->pending_generation = id; tab->filename_live_generation = id;
+        tab->pending_search_offset = 0; tab->search_loading_more = true;
+        DispatchIndexSearch(s, query, id);
+    } else RequestSearchPage(s, *tab, rest, false);
 }
 
 void CancelActiveContentSearch(AppState& s, app::Tab& tab) {
@@ -691,6 +844,7 @@ void CancelActiveContentSearch(AppState& s, app::Tab& tab) {
 }
 
 void LoadVirtualView(AppState& s, app::Tab& tab, const std::wstring& path, PathLoadReason reason) {
+    tab.explorer_handoff.reset();
     tab.current_path = path;
     tab.loading = false;
     tab.pending_generation = 0;
@@ -807,11 +961,23 @@ void LoadVirtualView(AppState& s, app::Tab& tab, const std::wstring& path, PathL
 }
 
 int FolderGroupFor(const AppState& s, const std::wstring& path) {
-    const auto saved = s.appPrefs.folder_groups.Find(path);
-    return static_cast<int>(saved.value_or(app::DefaultGroupFor(path)));
+    return static_cast<int>(s.appPrefs.folder_groups.Resolve(path));
+}
+
+// A Size sort orders folders by the totals known so far (#58); the UI timer
+// re-sorts as more arrive (ResortForFolderSizes).
+static std::shared_ptr<const app::FolderSizeLookup> SortFolderSizes(
+    AppState& s, app::Tab& tab, const std::wstring& path) {
+    if (tab.sort_column != ui::SortColumn::Size || path.empty() || fs::IsVirtualPath(path))
+        return nullptr;
+    auto sizes = std::make_shared<const app::FolderSizeLookup>(s.folderSizes.KnownChildren(path));
+    tab.folder_size_signature = app::FolderSizeSignature(*sizes);
+    tab.folder_size_resorted_at = GetTickCount64();
+    return sizes;
 }
 
 void StartLoadingPath(AppState& s, app::Tab& tab, const std::wstring& path, PathLoadReason reason) {
+    tab.explorer_handoff.reset();
     SyncTagGroups(s);
     s.index.CancelSession(tab.search_session_id);
     std::erase_if(s.pendingIndexSearches,[&](const auto& item){return item.second.query.session_id==tab.search_session_id;});
@@ -943,7 +1109,8 @@ void StartLoadingPath(AppState& s, app::Tab& tab, const std::wstring& path, Path
     }
     tab.pending_generation = shared_generation != 0
         ? shared_generation
-        : s.worker.Refresh(normalized, tab.sort_column, tab.sort_direction, tab.EffectiveGroup());
+        : s.worker.Refresh(normalized, tab.sort_column, tab.sort_direction, tab.EffectiveGroup(),
+                           SortFolderSizes(s, tab, normalized));
 
     SyncVisibleWatches(s);
     if (fs::IsUncPath(normalized)) RequestUncProbe(s, normalized);
@@ -956,11 +1123,11 @@ void ApplyWorkerResult(AppState& s, app::WorkResult& res) {
         ForEachPane(s, [&](app::Pane& pane) {
             app::Tab* tab = pane.ActiveTab();
             if (!tab || tab->current_path != res.path) return;
-            if (tab->pending_generation != 0 &&
-                tab->pending_generation != res.generation) return;
+            if (tab->pending_generation != res.generation) return;
             tab->loading = false;
             tab->pending_generation = 0;
             tab->net_readonly = fs::IsUncPath(res.path);
+            CompleteExplorerNavigation(*tab, res.generation, false);
             tab->banner_title = l10n::Get(tab->net_readonly
                 ? l10n::StringId::Offline : l10n::StringId::CannotOpen);
             tab->banner_message = tab->snapshot
@@ -980,7 +1147,7 @@ void ApplyWorkerResult(AppState& s, app::WorkResult& res) {
     ForEachPane(s, [&](app::Pane& pane) {
         app::Tab* tab = pane.ActiveTab();
         if (!tab || tab->current_path != res.path) return;
-        if (tab->pending_generation != 0 && tab->pending_generation != res.generation) return;
+        if (tab->pending_generation != res.generation) return;
         if (tab->applied_generation != 0 && res.generation < tab->applied_generation) return;
         any = true;
 
@@ -1082,6 +1249,7 @@ void ApplyWorkerResult(AppState& s, app::WorkResult& res) {
                 s.scrollTargetY = tab->scroll_y;
                 s.scrollAnimating = false;
             }
+            CompleteExplorerNavigation(*tab, res.generation, !res.cancelled && res.snapshot != nullptr);
     });
     if (again) RefreshPath(s, res.path);
     if (!any) return;
@@ -1183,7 +1351,8 @@ void RefreshPath(AppState& s, const std::wstring& path, RefreshReason reason) {
         }
         if (tab->pending_generation == 0) {
             tab->pending_generation = s.worker.Refresh(
-                normalized, tab->sort_column, tab->sort_direction, tab->EffectiveGroup());
+                normalized, tab->sort_column, tab->sort_direction, tab->EffectiveGroup(),
+                SortFolderSizes(s, *tab, normalized));
         }
     }
 }
@@ -1210,6 +1379,9 @@ void RevalidateVisibleFolders(AppState& s) {
 void RefreshActiveTab(AppState& s, RefreshReason reason) {
     app::Tab* tab = ActiveTab(s);
     if (!tab) return;
+    // F5 or a finished file operation must see the share as it is now (#74).
+    if (reason == RefreshReason::Explicit || reason == RefreshReason::OperationCompleted)
+        DropLiveNetworkSearch(s);
     RefreshPath(s, tab->current_path, reason);
 }
 
@@ -1510,7 +1682,9 @@ void ApplyLayoutPreset(AppState& s, app::LayoutPreset preset) {
     ui::ViewMode cloneView = ui::ViewMode::Details;
     ui::DetailsColumnWidths cloneColumns{};
     std::array<float, 4> cloneSearchColumns{};
-    if (s.pane && s.pane->ActiveTab() && !s.pane->ActiveTab()->current_path.empty())
+    // New panes clone the focused folder, This PC included: its path is empty,
+    // and it used to fall back to C:\ (#68).
+    if (s.pane && s.pane->ActiveTab())
         clone = s.pane->ActiveTab()->current_path;
     if (s.pane && s.pane->ActiveTab()) {
         cloneView = s.pane->ActiveTab()->view_mode;
@@ -1872,9 +2046,12 @@ void GoUp(AppState& s) {
         if (tab->CanGoBack()) GoBack(s);
         return;
     }
-    const std::wstring up = fs::ParentPath(tab->current_path);
-    if (_wcsicmp(up.c_str(), tab->current_path.c_str()) != 0) NavigateTo(s, up);
-    else if (!tab->current_path.empty()) NavigateTo(s, L""); // drive root -> This PC
+    // ParentPath answers in normalized form; compare like with like so an
+    // unnormalized C:\ is still seen as a root (#68).
+    const std::wstring current = fs::NormalizePath(tab->current_path);
+    const std::wstring up = fs::ParentPath(current);
+    if (_wcsicmp(up.c_str(), current.c_str()) != 0) NavigateTo(s, up);
+    else if (!current.empty()) NavigateTo(s, L""); // drive root -> This PC
 }
 
 void GoBack(AppState& s) {
@@ -2102,6 +2279,11 @@ void OpenSettingsTab(AppState& s, int page) {
 }
 void CloseLayoutTab(AppState& s, size_t idx) {
     if (idx >= s.window_tabs.items.size()) return;
+    if (app::LastTabClosesWindow(s.window_tabs.items.size(), s.window_tabs.items[idx]->pinned,
+                                 s.appPrefs.close_window_with_last_tab)) {
+        PostMessageW(s.hwnd, WM_CLOSE, 0, 0);
+        return;
+    }
     RememberLayoutFocus(s);
     s.window_tabs.CloseTab(idx);
     BindCurrentLayout(s);

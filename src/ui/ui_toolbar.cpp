@@ -120,7 +120,7 @@ void MainRenderer::DrawToolbar(const WindowViewModel& vm, const D2D1_RECT_F& rec
             L"\xE712",L"",theme.text_secondary,true,true);
     }
     const auto command = [&](D2D1_RECT_F bounds, const wchar_t* glyph, l10n::StringId label,
-                             HitTestResult::Region region, bool dropdown) {
+                             HitTestResult::Region region, bool dropdown, float turn = 0.0f) {
         fluent::ButtonSpec button;
         button.bounds=bounds;
         button.glyph=glyph;
@@ -129,12 +129,18 @@ void MainRenderer::DrawToolbar(const WindowViewModel& vm, const D2D1_RECT_F& rec
         button.kind=fluent::ButtonKind::Transparent;
         button.bordered=false;
         button.drop_down=dropdown && !button.icon_only;
+        button.chevron_turn=turn;
         button.state.hovered=IsHovered(vm,region);
         painter_.DrawButton(button);
     };
     MakeBrush(dc,theme.stroke_divider,brStrokeDivider_);
     FillRect(dc,brStrokeDivider_.get(),layout.sort.left-6*scale_,layout.sort.top+7*scale_,scale_,18*scale_);
-    command(layout.sort,L"\xE8CB",l10n::StringId::ToolbarSort,HitTestResult::ToolbarSort,true);
+    // The shared drum picker turns the chevron of the button that opened it,
+    // in step with its open/close fade.
+    const float picker_open=group_wheel_.OpenAmount();
+    const bool sort_picker=group_wheel_.IsSortPicker();
+    command(layout.sort,L"\xE8CB",l10n::StringId::ToolbarSort,HitTestResult::ToolbarSort,true,
+        sort_picker ? picker_open : 0.0f);
     if (vm.pane.filter_expand <= 0.015f && !vm.filter_editing) {
         command(layout.filter,kIconFilter,l10n::StringId::ToolbarFilter,HitTestResult::FilterBox,false);
     } else {
@@ -161,7 +167,8 @@ void MainRenderer::DrawToolbar(const WindowViewModel& vm, const D2D1_RECT_F& rec
         const D2D1_RECT_F g=layout.group;
         const bool icon_only=g.right-g.left < 60*scale_;
         if (toolbar_group_ <= 0) {
-            command(g,L"\xF168",l10n::StringId::ToolbarGroup,HitTestResult::ToolbarGroup,true);
+            command(g,L"\xF168",l10n::StringId::ToolbarGroup,HitTestResult::ToolbarGroup,true,
+                sort_picker ? 0.0f : picker_open);
         } else if (icon_only) {
             DrawButton(g,theme,IsHovered(vm,HitTestResult::ToolbarGroup) ? theme.fill_hover : theme.fill_selected,
                 L"\xF168",L"",theme.accent,true,true);

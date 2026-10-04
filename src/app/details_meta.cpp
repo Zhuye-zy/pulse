@@ -101,7 +101,7 @@ std::wstring FormatAccessMask(unsigned int mask, bool is_dir) {
     const bool write = (mask & FILE_GENERIC_WRITE) == FILE_GENERIC_WRITE;
     std::wstring out;
     auto add = [&](const wchar_t* part) {
-        if (!out.empty()) out += pulse::l10n::effective_language() == pulse::l10n::Language::ZhCN ? L"、" : L", ";
+        if (!out.empty()) out += pulse::l10n::IsChinese() ? L"、" : L", ";
         out += part;
     };
     if (read && write) add(pulse::l10n::Get(pulse::l10n::StringId::PermModify).c_str());

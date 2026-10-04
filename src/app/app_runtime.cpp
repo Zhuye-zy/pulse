@@ -6,6 +6,7 @@
 #include "update_status.h"
 #include "about_info.h"
 #include "../ui/lumatext_renderer.h"
+#include "../ui/link_type_text.h"
 #include "../ui/fluent_menu.h"
 #include "../ui/preview_format_catalog.h"
 #include "../ui/drag_drop.h"
@@ -30,6 +31,7 @@
 #include "resource.h"
 #include "pulse_version.h"
 #include "tray_reveal.h"
+#include "default_file_manager.h"
 #include "../ops/clipboard.h"
 #include "../ipc/ctx_menu_util.h"
 #include <windows.h>
@@ -160,6 +162,7 @@ app::UpdateProgress UpdateProgressForView(const AppState& s) {
         if (phase == L"downloading") return {UpdatePhase::Downloading, 3 * 1024 * 1024, 8 * 1024 * 1024};
         if (phase == L"downloading-unknown") return {UpdatePhase::Downloading, 3 * 1024 * 1024, 0};
         if (phase == L"verifying") return {UpdatePhase::Verifying};
+        if (phase == L"waiting") return {UpdatePhase::WaitingOperations};
         if (phase == L"launching") return {UpdatePhase::Launching};
         if (phase == L"installing") return {UpdatePhase::Installing};
         return {};
@@ -280,6 +283,15 @@ void SelectLaunchedFile(AppState& s, const std::wstring& raw) {
 }
 
 void OpenFolderInNewTab(AppState& s, const std::wstring& raw) {
+    if (app::IsThisPcArgument(raw)) {
+        // The This PC verb (设为默认文件管理器): This PC is the empty path,
+        // which only OpenTabAt keeps (NewTab turns it into C:\). FindFolderTab
+        // skips it, so each request opens a tab, as Explorer opens a window.
+        if (!IsWindowVisible(s.hwnd) && TakeFreshStart(s)) StartFreshAt(s, L"");
+        else OpenTabAt(s, L"");
+        s.tray_controller.RestoreWindow();
+        return;
+    }
     const std::wstring path = ResolveOpenFolderPath(raw);
     // Back from the tray with "open the default location" at startup: an
     // explicit folder starts over on its own, as launching with it would.
@@ -393,6 +405,7 @@ void FillPaneSlots(AppState& s, ui::WindowViewModel& vm) {
             vm.settings_page = app::SettingsController::PageFromName(rest);
             vm.settings_scroll = s.settings.scroll();
             vm.settings_launch_on_startup = s.appPrefs.launch_on_startup;
+            vm.settings_start_in_tray = s.appPrefs.start_in_tray;
             vm.settings_keep_running = s.appPrefs.keep_running_on_close;
             vm.settings_show_hidden_files = s.appPrefs.show_hidden_files;
             vm.settings_show_protected_os_files = s.appPrefs.show_protected_os_files;
@@ -403,7 +416,7 @@ void FillPaneSlots(AppState& s, ui::WindowViewModel& vm) {
             vm.settings_global_search_error = s.settings.global_search_error();
             vm.settings_content_status = ContentIndexStatusText(s);
             vm.settings_expanded = s.settingsExpanded;
-            if (vm.settings_page == 0) vm.settings_preview_codecs = ui::DetectPreviewCodecs(false);
+            if (vm.settings_page == 0) vm.settings_preview_codecs = ui::DetectPreviewCodecs(false, s.hwnd);
             vm.settings_theme = s.themeOverride == ui::ThemeMode::Light ? 1 : s.themeOverride == ui::ThemeMode::Dark ? 2 : 0;
             const auto content_config = s.contentSearch.GetConfig();
             const auto content_status = s.contentSearch.GetStatus();
@@ -433,14 +446,30 @@ void FillPaneSlots(AppState& s, ui::WindowViewModel& vm) {
             }
             vm.settings_open_folders = s.appPrefs.open_folders_in_pulse;
             vm.settings_win_e = s.appPrefs.take_over_win_e;
+            vm.settings_this_pc = s.appPrefs.take_over_this_pc;
+            vm.settings_explorer_windows = s.appPrefs.take_over_explorer_windows;
+            vm.settings_default_manager =
+                static_cast<int>(app::DefaultFileManagerState(s.appPrefs));
+            vm.settings_default_manager_desc = app::DefaultFileManagerSummary(s.appPrefs);
+            vm.settings_integration_enabled = s.appPrefs.integration_enabled;
+            vm.settings_integration_folders = s.appPrefs.integration_folders;
+            vm.settings_integration_win_e = s.appPrefs.integration_win_e;
+            vm.settings_integration_this_pc = s.appPrefs.integration_this_pc;
+            vm.settings_integration_experimental = s.appPrefs.take_over_explorer_windows;
+            vm.settings_integration_state = s.settings.IntegrationState();
+            vm.settings_integration_summary = s.settings.IntegrationSummary();
+            vm.settings_integration_can_retry = s.settings.IntegrationCanRetry() ||
+                vm.settings_integration_state == 2;
+            vm.settings_integration_can_restore = s.settings.IntegrationCanRestore();
             vm.settings_shell_tags = s.appPrefs.shell_tag_menu;
-            vm.settings_blank_click_go_back = s.appPrefs.blank_click_go_back;
+            vm.settings_blank_click_action = s.appPrefs.blank_click_action;
             vm.settings_change_tracking = s.appPrefs.change_tracking_enabled;
             vm.settings_change_days = s.appPrefs.change_tracking_days;
             vm.settings_row_height = s.appPrefs.row_height;
             vm.settings_tray_icon = s.appPrefs.tray_icon_size;
             vm.settings_language = s.appPrefs.language == L"zh-CN" ? 1
-                : s.appPrefs.language == L"en-US" ? 2 : 0;
+                : s.appPrefs.language == L"zh-TW" ? 2
+                : s.appPrefs.language == L"en-US" ? 3 : 0;
             wchar_t version_text[128]{};
             swprintf_s(version_text,
                 l10n::Get(l10n::StringId::VersionFormat).c_str(), PULSE_VERSION_STRING);
@@ -451,8 +480,10 @@ void FillPaneSlots(AppState& s, ui::WindowViewModel& vm) {
             vm.settings_build_id = build_text;
             vm.settings_update_enabled = app::UpdateChecker::Enabled() ||
                 s.shot.update_available;
+            vm.settings_update_auto = s.appPrefs.auto_check_updates;
             vm.settings_update_checking = s.update_checker.checking();
-            vm.settings_update_downloading = s.update_installer.downloading();
+            vm.settings_update_downloading = s.update_installer.Progress().active() &&
+                !s.update_installer.installing();
             vm.settings_update_installing = s.update_installer.installing();
             DWORD update_install_error = s.update_install_error;
             if (s.shot.active) {
@@ -483,7 +514,8 @@ void FillPaneSlots(AppState& s, ui::WindowViewModel& vm) {
             } else if (!vm.settings_update_enabled) {
                 vm.settings_update_status = l10n::Get(l10n::StringId::UpdateDisabled);
             } else if (!s.update_result_ready) {
-                vm.settings_update_status = l10n::Get(l10n::StringId::UpdateDesc);
+                vm.settings_update_status = l10n::Get(s.appPrefs.auto_check_updates ?
+                    l10n::StringId::UpdateDesc : l10n::StringId::UpdateDescManual);
             } else if (s.update_result.error == app::UpdateError::UnsupportedWindows) {
                 vm.settings_update_status =
                     l10n::Get(l10n::StringId::UpdateUnsupportedWindows);
@@ -501,7 +533,9 @@ void FillPaneSlots(AppState& s, ui::WindowViewModel& vm) {
             vm.settings_bloom = &s.bloom_accent;
             vm.settings_index_service = s.index.Connected() && s.index.ServiceMode();
             vm.settings_index_installed = s.settings.service_installed();
-            vm.settings_index_status = s.index.Status();
+            // Index and network-index texts are Simplified (most come from
+            // Pulse.Index.exe); localize them here, at the display boundary.
+            vm.settings_index_status = l10n::ServiceText(s.index.Status());
             vm.settings_index_migrating = s.settings.migration_pending();
             if (vm.settings_page == 3) {
                 vm.settings_about_rows = app::BuildAboutRows(vm.settings_index_service,
@@ -517,7 +551,7 @@ void FillPaneSlots(AppState& s, ui::WindowViewModel& vm) {
             if (vm.settings_index_migrating)
                 vm.settings_index_status = l10n::Get(l10n::StringId::IndexMigrating);
             vm.settings_index_path = s.index.IndexPath();
-            vm.settings_index_error = s.settings.error();
+            vm.settings_index_error = l10n::ServiceText(s.settings.error());
             vm.settings_index_volumes.clear();
             vm.settings_index_excluded_paths = s.index.ExcludedPaths();
             vm.settings_network_roots.clear();
@@ -546,7 +580,8 @@ void FillPaneSlots(AppState& s, ui::WindowViewModel& vm) {
                     row.detail += L" · ";
                     row.detail += count;
                 }
-                row.state = volume.state;
+                row.raw_state = volume.state;
+                row.state = l10n::ServiceText(volume.state);
                 row.checked = volume.enabled;
                 row.enabled = vm.settings_index_service && volume.supported;
                 row.pending = s.settings.VolumePending(volume.id);
@@ -558,8 +593,8 @@ void FillPaneSlots(AppState& s, ui::WindowViewModel& vm) {
             for (const auto& root : network_roots) {
                 ui::NetworkRootRowView row;
                 row.path = root.path;
-                row.state = root.state;
-                row.detail = root.error;
+                row.state = l10n::ServiceText(root.state);
+                row.detail = l10n::ServiceText(root.error);
                 row.online = root.online;
                 row.building = root.building;
                 vm.settings_network_roots.push_back(std::move(row));
@@ -567,7 +602,7 @@ void FillPaneSlots(AppState& s, ui::WindowViewModel& vm) {
             if (s.shot.active && vm.settings_page == 1 && vm.settings_network_roots.empty()) {
                 ui::NetworkRootRowView row;
                 row.path = L"\\\\fileserver\\projects\\设计资料";
-                row.state = L"已同步 · 128,420 项";
+                row.state = l10n::ServiceText(L"已同步 · 128,420 项");
                 row.online = true;
                 vm.settings_network_roots.push_back(std::move(row));
             }
@@ -582,7 +617,10 @@ void FillPaneSlots(AppState& s, ui::WindowViewModel& vm) {
             for (const auto& seen : s.ctxMenuPrefs.seen) {
                 ui::SettingsRowView row;
                 row.key = seen.key;
-                row.text = seen.text;
+                // Pulse's own compress row is stored in Simplified; shell rows
+                // already use the system language.
+                row.text = seen.key == ipc::CompressCatalogKey()
+                    ? std::wstring(l10n::Cn(ipc::CompressCatalogText())) : seen.text;
                 row.group = static_cast<int>(ipc::GroupOf(seen.category));
                 row.on = s.ctxMenuPrefs.ItemEnabled(seen.key, seen.category, seen.from_com);
                 vm.settings_items.push_back(std::move(row));
@@ -1081,7 +1119,7 @@ std::wstring DetailsAttributeText(DWORD attrs) {
     std::wstring result;
     for (const auto& value : values) {
         if (!(attrs & value.bit)) continue;
-        if (!result.empty()) result += pulse::l10n::effective_language() == pulse::l10n::Language::ZhCN ? L"、" : L", ";
+        if (!result.empty()) result += pulse::l10n::IsChinese() ? L"、" : L", ";
         result += value.name;
     }
     return result.empty() ? pulse::l10n::Get(pulse::l10n::StringId::AttrNormal).c_str() : result;
@@ -1746,14 +1784,19 @@ ui::WindowViewModel BuildVm(AppState& s, bool probe_details) {
     vm.settings_list_zebra_rows = s.appPrefs.list_zebra_rows;
     vm.settings_list_size_bar = s.appPrefs.list_size_bar;
     vm.settings_list_tag_names = s.appPrefs.list_tag_name_color;
+    vm.settings_list_selection_outline = s.appPrefs.list_selection_outline;
     vm.settings_vertical_tabs = s.appPrefs.vertical_tabs;
     vm.settings_show_hints = s.appPrefs.show_hints;
     vm.settings_tips_seen = s.appPrefs.tips_seen != 0;
     vm.settings_folder_sort = s.appPrefs.folder_sort_mode;
     vm.settings_startup_open = s.appPrefs.startup_open;
+    vm.settings_notify_icon = s.appPrefs.notify_icon_mode;
     vm.settings_new_tab_open = s.appPrefs.new_tab_open;
+    vm.settings_close_last_tab = s.appPrefs.close_window_with_last_tab;
+    vm.settings_confirm_delete = s.appPrefs.confirm_recycle_delete;
     vm.settings_home_folder = s.appPrefs.home_folder;
     vm.settings_text_render = s.appPrefs.text_render;
+    vm.settings_ui_font_scale = s.appPrefs.ui_font_scale;
     vm.sidebar_scroll = s.sidebarScroll;
     vm.sidebar_scrollbar_opacity = s.sidebarScrollbarFade.Opacity();
     vm.sidebar_scrollbar_expand = s.sidebarScrollbarFade.Expand();
@@ -1783,7 +1826,7 @@ ui::WindowViewModel BuildVm(AppState& s, bool probe_details) {
     }
     app::ApplyUpdateStatus(vm.status, UpdateProgressForView(s), st.active);
     {
-        std::wstring idx = s.index.Status();
+        std::wstring idx = l10n::ServiceText(s.index.Status());
         app::Tab* active = ActiveTab(s);
         std::wstring virtual_kind;
         std::wstring virtual_rest;
@@ -2088,6 +2131,8 @@ ui::WindowViewModel BuildVm(AppState& s, bool probe_details) {
             dv.name = e.name;
             dv.is_dir = penetrated ? e.link_target_is_dir : e.is_dir;
             dv.attrs = e.attrs;
+            dv.link_kind = fs::ClassifyLink(e.attrs, e.reparse_tag);
+            dv.is_link = dv.link_kind != fs::LinkKind::None || (!e.is_dir && ui::IsShortcutName(e.name));
             if (penetrated && e.link_target_is_dir) dv.attrs |= FILE_ATTRIBUTE_DIRECTORY;
             dv.size_value = penetrated ? e.link_target_size : e.size;
             const FILETIME& shown_mtime = penetrated ? e.link_target_mtime : e.mtime;
@@ -2158,14 +2203,15 @@ ui::WindowViewModel BuildVm(AppState& s, bool probe_details) {
             }
             dv.location_text = TrayDisplayPath(fs::ParentPath(dv.path));
             dv.attributes_text = DetailsAttributeText(dv.attrs);
-            dv.type_text = s.detailsTypeName;
+            dv.type_text = dv.link_kind != fs::LinkKind::None
+                ? ui::LinkTypeText(dv.link_kind) : s.detailsTypeName;
             if (!dv.is_dir) {
-                dv.subtitle_text = s.detailsTypeName;
+                dv.subtitle_text = dv.type_text;
                 if (!dv.subtitle_text.empty()) dv.subtitle_text += L" · ";
                 dv.subtitle_text += pulse::format::ByteSize(dv.size_value, true);
                 dv.size_text = pulse::format::ByteSize(dv.size_value, true) + L" (" +
                                pulse::format::GroupedInt(dv.size_value) +
-                               L" \u5B57\u8282)";
+                               pulse::l10n::Pick(L" \u5B57\u8282)", L" bytes)");
             }
             if (s.detailsMetaPath == dv.path) {
                 dv.owner_text = s.detailsOwner;
@@ -2303,6 +2349,7 @@ std::wstring TooltipForHover(AppState& s) {
     case R::AddressSearchOptions: return text(I::SearchOptions);
     case R::ContentIndexManage:
     case R::SettingsContentIndex: return text(I::ContentIndexManage);
+    case R::NetworkIndexAdd: return text(I::NetworkLiveAdd);
     case R::AddressSearchClear: return text(I::Clear);
     case R::AddressSearchClose: return text(I::Back);
     case R::TabClose: return text(I::TooltipCloseTab);
@@ -2347,10 +2394,13 @@ std::wstring TooltipForHover(AppState& s) {
     case R::SettingsDensity: return text(I::SettingsRowHeight);
     case R::SettingsFolderSort: return text(I::SettingsFolderSort);
     case R::SettingsStartupOpen: return text(I::SettingsStartupOpen);
+    case R::SettingsNotifyIcon: return text(I::SettingsNotifyIcon);
     case R::SettingsNewTabOpen: return text(I::SettingsNewTabOpen);
+    case R::SettingsBlankClick: return text(I::SettingsBlankClickBack);
     case R::SettingsHomeFolder:
         return text(s.hoverControlIndex == 1 ? I::ThisPc : I::SettingsHomeFolderPick);
     case R::SettingsTextRender: return text(I::SettingsTextRender);
+    case R::SettingsUiFontSize: return text(I::SettingsUiFontSize);
     case R::SettingsTrayIcon: return text(I::SettingsTrayIcon);
     case R::SettingsWallpaperLook: return text(I::SettingsWallpaperLook);
     case R::SettingsWallpaperBlur: return text(I::SettingsWallpaperBlur);
@@ -2506,6 +2556,11 @@ std::wstring TooltipForHover(AppState& s) {
                 default: break;
                 }
             }
+            // Only the name and it is fully visible: a tooltip would just repeat
+            // it (B站 #15). Shortened names and extra facts still show.
+            if (tooltip.size() == entry.name.size() &&
+                !s.renderer.HoveredNameTruncated(std::max(0, s.hoverPaneIndex), s.hoverControlIndex))
+                return L"";
             return tooltip;
         }
         return L"";

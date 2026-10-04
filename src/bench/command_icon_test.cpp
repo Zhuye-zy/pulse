@@ -64,7 +64,7 @@ void Gallery(IWICImagingFactory* wic, ID2D1Factory* factory, const wchar_t* file
         L"Paste",L"Rename",L"Sort",L"Filter",L"List",L"Grid",L"Split",L"Columns",
         L"Panel",L"Close panel",L"Check",L"Eye",L"Info",L"Home",L"Tray",L"Pin",
         L"Link",L"Palette",L"Sliders",L"Warning",L"Lock",L"External",L"Favourite",L"More",
-        L"Split 1",L"Split 2",L"Split 3",L"Split 4"
+        L"Split 1",L"Split 2",L"Split 3",L"Split 4",L"Contrast"
     };
     static_assert(std::size(names) == static_cast<size_t>(Icon::Count)-1);
     Ref<IWICBitmap> bitmap;
@@ -192,6 +192,19 @@ int wmain(int argc, wchar_t** argv) {
         star_ink[filled]=Inspect(bitmap.value,light.surface_card,{20,20,44,44}).ink;
     }
     Check(star_ink[1]>star_ink[0],"filled favourite has more painted area than its outline");
+
+    // Title-bar theme toggle: one solid half, so it never reads as the gear.
+    Check(FromGlyph(L"\xE793")==Icon::Contrast,"theme toggle glyph maps to the contrast icon");
+    target->BeginDraw();target->SetTransform(D2D1::Matrix3x2F::Identity());target->Clear(light.surface_card);
+    brush->SetColor(light.text);
+    Draw(target.value,brush.value,stroke.value,Icon::Contrast,{20,20,44,44});
+    Check(SUCCEEDED(target->EndDraw()),"contrast render");
+    // Inspect counts ink across the bitmap; with the right half as bounds,
+    // "outside" is the ink of the left half.
+    const auto contrast=Inspect(bitmap.value,light.surface_card,{32,20,44,44});
+    const int contrast_left=contrast.outside, contrast_right=contrast.ink-contrast.outside;
+    std::printf("contrast ink left=%d right=%d\n",contrast_left,contrast_right);
+    Check(contrast_left>0 && contrast_right>contrast_left*2,"contrast icon paints its right half solid");
 
     target->BeginDraw();
     const auto transform=D2D1::Matrix3x2F::Translation(3,5)*D2D1::Matrix3x2F::Scale(1.25f,1.25f);

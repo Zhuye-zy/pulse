@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <cstdint>
 
@@ -31,6 +32,9 @@ public:
     void Sync(std::vector<FolderSizeRequest> visible, std::vector<std::wstring> watch_roots);
     void Calculate(const std::wstring& path);
     FolderSizeValue Get(const std::wstring& path) const;
+    // Known totals of the direct subfolders of `parent`, keyed by lower-cased
+    // name: what a Size sort of that folder can use right now (#58).
+    std::unordered_map<std::wstring, uint64_t> KnownChildren(const std::wstring& parent) const;
     void Invalidate(const std::wstring& path);
     bool TakeChanged();
     void Stop();

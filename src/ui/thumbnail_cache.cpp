@@ -1,4 +1,5 @@
 #include "thumbnail_cache.h"
+#include "thumbnail_artwork_layout.h"
 #include <algorithm>
 #include <cwctype>
 #include <iterator>
@@ -24,25 +25,12 @@ bool UploadBitmap(ID2D1DeviceContext* dc, ComPtr<ID2D1Bitmap>& bitmap,
     return true;
 }
 
-// Aspect-fit (contain) into dest, centred.
+// Aspect-fit (contain), optionally placing the visible artwork at dest.bottom.
 void DrawContained(ID2D1DeviceContext* dc, ID2D1Bitmap* bitmap, uint32_t w, uint32_t h,
-                   const D2D1_RECT_F& dest, float opacity) {
-    const float destW = std::max(1.0f, dest.right - dest.left);
-    const float destH = std::max(1.0f, dest.bottom - dest.top);
-    D2D1_RECT_F fitted = dest;
-    const float sourceAspect = static_cast<float>(w) / static_cast<float>(std::max(1u, h));
-    const float destAspect = destW / destH;
-    if (sourceAspect > destAspect) {
-        const float height = destW / sourceAspect;
-        const float center = (dest.top + dest.bottom) * 0.5f;
-        fitted.top = center - height * 0.5f;
-        fitted.bottom = center + height * 0.5f;
-    } else if (sourceAspect < destAspect) {
-        const float width = destH * sourceAspect;
-        const float center = (dest.left + dest.right) * 0.5f;
-        fitted.left = center - width * 0.5f;
-        fitted.right = center + width * 0.5f;
-    }
+                   const D2D1_RECT_F& dest, float opacity, const IconArtworkBounds& bounds,
+                   bool align_artwork_bottom, D2D1_RECT_F* artwork_rect) {
+    const auto fitted = ContainedThumbnailRect(dest, w, h, bounds, align_artwork_bottom);
+    if (artwork_rect) *artwork_rect = ThumbnailArtworkRect(fitted, bounds);
     dc->DrawBitmap(bitmap, &fitted, std::clamp(opacity, 0.0f, 1.0f),
         D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
 }
@@ -167,23 +155,15 @@ PreviewDrawResult ThumbnailCache::Draw(ID2D1DeviceContext* dc, const D2D1_RECT_F
                                        uint32_t* decoded_width, uint32_t* decoded_height,
                                        uint32_t* source_width, uint32_t* source_height,
                                        PreviewViewport* viewport,
-                                       uint32_t* text_encoding) {
+                                       uint32_t* text_encoding,
+                                       bool align_artwork_bottom, D2D1_RECT_F* artwork_rect) {
+    if (artwork_rect) *artwork_rect = dest;
     if (!dc || path.empty() || pixels < 24) return PreviewDrawResult::Failed;
     const std::wstring key = Key(path, pixels, modified, size, frame_index);
     {
         std::lock_guard lock(mutex_);
         const std::wstring identity = Key(path, 0, modified, size);
-        if (direct_preview && identity != latest_details_identity_) {
-            latest_details_identity_ = identity;
-            for (auto queued = queue_.begin(); queued != queue_.end();) {
-                if (queued->details) {
-                    pending_.erase(queued->key);
-                    queued = queue_.erase(queued);
-                } else {
-                    ++queued;
-                }
-            }
-        }
+        if (direct_preview) SelectDetailsLocked(identity);
         auto queue_request = [&] {
             if (pending_.contains(key)) return;
             pending_.insert(key);
@@ -236,6 +216,7 @@ PreviewDrawResult ThumbnailCache::Draw(ID2D1DeviceContext* dc, const D2D1_RECT_F
                     viewport->SetContent(dest, static_cast<float>(item.source_width ? item.source_width : item.w),
                         static_cast<float>(item.source_height ? item.source_height : item.h), true);
                     const auto target = viewport->ContentRect();
+                    if (artwork_rect) *artwork_rect = ThumbnailArtworkRect(target, item.artwork_bounds);
                     dc->PushAxisAlignedClip(dest, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
                     dc->DrawBitmap(item.bitmap.get(), &target, std::clamp(opacity, 0.0f, 1.0f),
                         D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
@@ -269,16 +250,19 @@ PreviewDrawResult ThumbnailCache::Draw(ID2D1DeviceContext* dc, const D2D1_RECT_F
                         std::clamp(opacity, 0.0f, 1.0f),
                         D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
                     dc->PopAxisAlignedClip();
+                    if (artwork_rect) *artwork_rect = ThumbnailArtworkRect(fitted, item.artwork_bounds);
                     return PreviewDrawResult::Bitmap;
                 }
-                DrawContained(dc, item.bitmap.get(), item.w, item.h, dest, opacity);
+                DrawContained(dc, item.bitmap.get(), item.w, item.h, dest, opacity,
+                    item.artwork_bounds, align_artwork_bottom, artwork_rect);
                 return PreviewDrawResult::Bitmap;
             }
             if (item.failed) {
                 if (item.transient && GetTickCount64() >= item.retry_at) queue_request();
                 if (!viewport && !(pan_x && pan_y)) {
                     if (Item* stale = StaleBitmap(identity, key)) {
-                        DrawContained(dc, stale->bitmap.get(), stale->w, stale->h, dest, opacity);
+                        DrawContained(dc, stale->bitmap.get(), stale->w, stale->h, dest, opacity,
+                            stale->artwork_bounds, align_artwork_bottom, artwork_rect);
                         return PreviewDrawResult::Bitmap;
                     }
                 }
@@ -290,12 +274,36 @@ PreviewDrawResult ThumbnailCache::Draw(ID2D1DeviceContext* dc, const D2D1_RECT_F
         // previous decode stays on screen until this one arrives.
         if (!viewport && !(pan_x && pan_y) && frame_index == 0) {
             if (Item* stale = StaleBitmap(identity, key)) {
-                DrawContained(dc, stale->bitmap.get(), stale->w, stale->h, dest, opacity);
+                DrawContained(dc, stale->bitmap.get(), stale->w, stale->h, dest, opacity,
+                    stale->artwork_bounds, align_artwork_bottom, artwork_rect);
                 return PreviewDrawResult::Bitmap;
             }
         }
     }
     return PreviewDrawResult::Pending;
+}
+
+PreviewDrawResult ThumbnailCache::DrawGridThumbnail(ID2D1DeviceContext* dc,
+    const D2D1_RECT_F& dest, const std::wstring& path, DWORD attrs, uint32_t pixel_size,
+    uint64_t generation, uint64_t modified, uint64_t size, float opacity,
+    bool align_bottom, D2D1_RECT_F* artwork) {
+    return Draw(dc, dest, path, attrs, pixel_size, generation, modified, size,
+        opacity, nullptr, nullptr, nullptr, false, nullptr,
+        nullptr, nullptr, nullptr, nullptr, 0, nullptr, nullptr, nullptr,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, align_bottom, artwork);
+}
+
+void ThumbnailCache::SelectDetailsLocked(const std::wstring& identity) {
+    if (identity == latest_details_identity_) return;
+    latest_details_identity_ = identity;
+    for (auto queued = queue_.begin(); queued != queue_.end();) {
+        if (queued->details) {
+            pending_.erase(queued->key);
+            queued = queue_.erase(queued);
+        } else {
+            ++queued;
+        }
+    }
 }
 
 bool ThumbnailCache::Properties(const std::wstring& path, DWORD attrs, uint64_t generation,
@@ -305,11 +313,12 @@ bool ThumbnailCache::Properties(const std::wstring& path, DWORD attrs, uint64_t 
     const std::wstring identity = Key(path, 0, modified, size);
     const std::wstring key = identity + L":properties";
     std::lock_guard lock(mutex_);
-    if (identity != latest_details_identity_) return false;
+    SelectDetailsLocked(identity);
     if (auto it = items_.find(key); it != items_.end()) {
         Touch(it->second);
         properties = it->second.properties;
-        return !it->second.failed;
+        if (!it->second.failed) return true;
+        if (!it->second.transient || GetTickCount64() < it->second.retry_at) return false;
     }
     if (!pending_.contains(key) && queue_.size() < 128) {
         pending_.insert(key);
@@ -492,6 +501,8 @@ void ThumbnailCache::Worker() {
                 if (void* p=MapViewOfFile(map, FILE_MAP_READ,0,0,bytes)) {
                     result.pixels.assign((uint8_t*)p,(uint8_t*)p+bytes); UnmapViewOfFile(p);
                     result.w=response.width; result.h=response.height; result.stride=response.stride;
+                    result.artwork_bounds = MeasureIconArtwork(result.pixels,
+                        result.w, result.h, result.stride);
                 } CloseHandle(map); }
         }
         if (ok && response.mapping_chars) { const unsigned char ack=1; ok=ipc::WriteAll(pipe_,&ack,1); }

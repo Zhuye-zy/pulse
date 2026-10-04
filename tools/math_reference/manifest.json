@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "purpose": "Development-only reference; never a Pulse runtime or installer dependency",
+  "package": "katex",
+  "version": "0.16.22",
+  "registryMetadata": "https://registry.npmjs.org/katex/0.16.22",
+  "tarball": "https://registry.npmjs.org/katex/-/katex-0.16.22.tgz",
+  "integrity": "sha512-XCHRdUw4lf3SKBaJe4EvgqIuWwkPSo9XoeO8GjQW94Bp7TWv9hNhzZjZ+OH9yf1UmLygb7DIT5GSFQiyt16zYg==",
+  "upstream": "https://github.com/KaTeX/KaTeX/releases/tag/v0.16.22",
+  "license": "MIT",
+  "licenseSource": "https://github.com/KaTeX/KaTeX/blob/v0.16.22/LICENSE",
+  "nodeMinimumMajor": 18,
+  "options": {
+    "throwOnError": true,
+    "strict": "error",
+    "trust": false,
+    "maxExpand": 1000,
+    "maxSize": 100
+  },
+  "corpus": "corpus.tsv",
+  "corpusProvenance": "Original combinations of standard textbook and research mathematics, authored for Pulse; no textbook or paper excerpts.",
+  "note": "The pinned release is a stable comparison target, not a claim to use the latest KaTeX. Acceptance, structure and visual equivalence are different checks."
+}

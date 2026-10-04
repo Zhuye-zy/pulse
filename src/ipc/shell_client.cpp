@@ -1,5 +1,6 @@
 // shell_client.cpp — See shell_client.h for the contract.
 #include "shell_client.h"
+#include "../common/localization.h"
 
 namespace pulse::ipc {
 
@@ -73,10 +74,12 @@ bool ShellClient::SpawnChild() {
         const DWORD gle = GetLastError();
         fprintf(stderr, "[shell_client] CreateProcess failed gle=%lu cmd=%ls\n", gle, cmd.c_str());
         if (gle == ERROR_FILE_NOT_FOUND) {
-            last_error_ = L"\u627E\u4E0D\u5230 pulse_shell.exe\uFF08\u9700\u4E0E Pulse \u653E\u5728\u540C\u4E00\u76EE\u5F55\uFF09";
+            last_error_ = l10n::Pick(L"\u627E\u4E0D\u5230 pulse_shell.exe\uFF08\u9700\u4E0E Pulse \u653E\u5728\u540C\u4E00\u76EE\u5F55\uFF09",
+                                     L"pulse_shell.exe not found (it must be in the same folder as Pulse)");
         } else {
-            last_error_ = L"\u65E0\u6CD5\u542F\u52A8 pulse_shell.exe\uFF08\u9519\u8BEF " +
-                          std::to_wstring(gle) + L"\uFF09";
+            last_error_ = l10n::Pick(L"\u65E0\u6CD5\u542F\u52A8 pulse_shell.exe\uFF08\u9519\u8BEF ",
+                                     L"Could not start pulse_shell.exe (error ") +
+                          std::to_wstring(gle) + l10n::Pick(L"\uFF09", L")");
         }
         return false;
     }
@@ -114,7 +117,7 @@ bool ShellClient::EnsureConnected() {
         if (err == ERROR_PIPE_BUSY) {
             WaitNamedPipeW(name.c_str(), 200);
             if (GetTickCount64() > deadline) {
-                last_error_ = L"pulse_shell.exe \u7BA1\u9053\u5FD9\u788C";
+                last_error_ = l10n::Pick(L"pulse_shell.exe \u7BA1\u9053\u5FD9\u788C", L"pulse_shell.exe pipe is busy");
                 return false;
             }
             continue;
@@ -124,11 +127,11 @@ bool ShellClient::EnsureConnected() {
                 DWORD code = 0;
                 GetExitCodeProcess(child_.hProcess, &code);
                 fprintf(stderr, "[shell_client] child exited early code=%lu\n", code);
-                last_error_ = L"pulse_shell.exe \u542F\u52A8\u540E\u7ACB\u5373\u9000\u51FA";
+                last_error_ = l10n::Pick(L"pulse_shell.exe \u542F\u52A8\u540E\u7ACB\u5373\u9000\u51FA", L"pulse_shell.exe exited right after starting");
                 return false;
             }
             if (GetTickCount64() > deadline) {
-                last_error_ = L"pulse_shell.exe \u672A\u54CD\u5E94\u7BA1\u9053";
+                last_error_ = l10n::Pick(L"pulse_shell.exe \u672A\u54CD\u5E94\u7BA1\u9053", L"pulse_shell.exe did not respond on its pipe");
                 return false;
             }
             Sleep(50);

@@ -226,6 +226,9 @@ void MainRenderer::DrawColumnStripColumn(const WindowViewModel& vm, const PaneVi
             if (entry.is_dir) DrawFolderIcon(ix, iy, icon, theme);
             else DrawFileIcon(ix, iy, icon, theme);
         }
+        if (fs::ClassifyLink(entry.attrs, entry.reparse_tag) != fs::LinkKind::None ||
+            (!entry.is_dir && IsShortcutName(entry.name)))
+            DrawLinkOverlay(ix, iy, icon, theme);
         const bool dim = (entry.attrs & FILE_ATTRIBUTE_HIDDEN) != 0;
         MakeBrush(dc, dim ? WithAlpha(theme.text, 0.55f) : theme.text, brText_);
         const float tx = ix + icon + 8.0f * scale_;

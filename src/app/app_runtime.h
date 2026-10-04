@@ -4,6 +4,9 @@
 
 namespace pulse {
 
+// The updater must keep the window open if session/preferences cannot be saved.
+bool PrepareSessionForUpdate(AppState& s);
+
 inline app::LayoutTab& LiveLayout(AppState& s) {
     s.window_tabs.EnsureDefault();
     return *s.window_tabs.Active();

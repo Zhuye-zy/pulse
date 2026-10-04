@@ -47,6 +47,8 @@ std::vector<VolumeInfo> EnumerateLocalVolumes(const IndexConfig& config);
 
 std::wstring MachineDataRoot();
 std::wstring MachineIndexRoot();
+// SYSTEM/Administrators-only DACL for an index folder that is new or empty.
+bool ProtectIndexDirectory(const std::wstring& path);
 std::wstring UserIndexRoot();
 std::wstring MachineConfigPath();
 

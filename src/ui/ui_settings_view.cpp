@@ -229,7 +229,7 @@ void MainRenderer::DrawSettings(const WindowViewModel& vm, const D2D1_RECT_F& re
                 const float badge_y = row.top + ((row.bottom - row.top) - badge_h) * 0.5f;
                 painter_.DrawBadge({ D2D1::RectF(badge_x, badge_y,
                                                  badge_x + badge_w, badge_y + badge_h),
-                                     volume.state, IndexVolumeBadgeKind(volume.state) });
+                                     volume.state, IndexVolumeBadgeKind(volume.raw_state.empty() ? volume.state : volume.raw_state) });
             }
             MakeBrush(dc, theme.stroke_divider, brStrokeDivider_);
             FillRect(dc, brStrokeDivider_.get(), row.left + 12.0f * scale_, row.bottom - 1.0f,
@@ -569,6 +569,35 @@ void MainRenderer::DrawSettings(const WindowViewModel& vm, const D2D1_RECT_F& re
                     pulse::l10n::StringId::DownloadUpdate), {},
                 fluent::ButtonKind::Primary, download});
         }
+        if (lay.update_auto_row.bottom > lay.update_auto_row.top) {
+            // Same row as the diagnostics card's performance switch.
+            const D2D1_RECT_F& row = lay.update_auto_row;
+            const bool hovered = IsHovered(vm, HitTestResult::SettingsToggle, 31);
+            if (hovered) {
+                MakeBrush(dc, theme.fill_hover, brFillHover_);
+                FillRoundedRect(dc, brFillHover_.get(), row.left + 4.0f * scale_, row.top,
+                                row.right - row.left - 8.0f * scale_, row.bottom - row.top,
+                                4.0f * scale_);
+            }
+            MakeBrush(dc, theme.text, brText_);
+            DrawTextRect(dc, compositor_->TextFormat(), brText_.get(),
+                         pulse::l10n::Get(pulse::l10n::StringId::SettingsAutoUpdate),
+                         row.left + 16.0f * scale_, row.top + 8.0f * scale_,
+                         row.right - row.left - 80.0f * scale_, 22.0f * scale_);
+            MakeBrush(dc, theme.text_secondary, brTextSecondary_);
+            DrawTextRect(dc, compositor_->SmallFormat(), brTextSecondary_.get(),
+                         pulse::l10n::Get(pulse::l10n::StringId::SettingsAutoUpdateDesc),
+                         row.left + 16.0f * scale_, row.top + 30.0f * scale_,
+                         row.right - row.left - 80.0f * scale_, 18.0f * scale_);
+            fluent::ControlState st{};
+            st.checked = vm.settings_update_auto;
+            st.hovered = hovered;
+            painter_.DrawSwitch(D2D1::RectF(row.right - 16.0f * scale_ - switch_w,
+                                            row.top + (56.0f * scale_ - switch_h) * 0.5f,
+                                            row.right - 16.0f * scale_,
+                                            row.top + (56.0f * scale_ + switch_h) * 0.5f),
+                                L"", st);
+        }
         if (!vm.settings_index_error.empty()) {
             MakeBrush(dc, theme.danger, brDanger_);
             DrawTextRect(dc, compositor_->SmallFormat(), brDanger_.get(),
@@ -893,11 +922,17 @@ float MainRenderer::SettingsDestinationOffset(const WindowViewModel& vm, int set
     case I::SettingsThemeColor: target=l.accent_card;break;
     case I::SettingsWindowEffect: target=l.effect_card;break;
     case I::SettingsLanguage: target=l.language_card;break;
+    case I::SettingsIntegration: target=l.integration_section;break;
+    case I::SettingsDefaultManager: target=l.default_manager_row;break;
     case I::SettingsLaunch: target=l.startup_row[0];break;
+    case I::SettingsStartInTray: target=l.start_in_tray_row;break;
     case I::SettingsKeepRunning: target=l.startup_row[1];break;
+    case I::SettingsNotifyIcon: target=l.notify_icon_card;break;
     case I::SettingsHomeFolder: target=l.home_folder_card;break;
     case I::SettingsStartupOpen: target=l.startup_open_card;break;
     case I::SettingsNewTabOpen: target=l.new_tab_open_card;break;
+    case I::SettingsCloseLastTab: target=l.close_last_tab_row;break;
+    case I::SettingsConfirmDelete: target=l.confirm_delete_row;break;
     case I::SettingsOpenFolders: target=l.startup_row[2];break;
     case I::SettingsRowHeight: target=l.density_card;break;
     case I::SettingsShowPerformance: target=l.performance_row;break;
@@ -905,8 +940,10 @@ float MainRenderer::SettingsDestinationOffset(const WindowViewModel& vm, int set
     case I::ListZebraRows: target=l.list_style_row[1];break;
     case I::ListSizeBar: target=l.list_style_row[2];break;
         case I::ListTagNameColor: target=l.list_style_row[3];break;
+    case I::ListSelectionOutline: target=l.list_style_row[4];break;
     case I::SettingsFolderSort: target=l.folder_sort_card;break;
     case I::SettingsTextRender: target=l.text_render_card;break;
+    case I::SettingsUiFontSize: target=l.ui_font_size_card;break;
     case I::SettingsWallpaper: target=l.wallpaper_card;break;
     case I::SettingsWallpaperLook: target=l.wallpaper_look_card;break;
     case I::SettingsWallpaperBlur: target=l.wallpaper_blur_card;break;
@@ -919,6 +956,8 @@ float MainRenderer::SettingsDestinationOffset(const WindowViewModel& vm, int set
     case I::SettingsHintsReset: target=l.hints_reset_row;break;
     case I::SettingsBlankClickBack: target=l.blank_click_row;break;
     case I::SettingsWinE: target=l.win_e_row;break;
+    case I::SettingsThisPc: target=l.this_pc_row;break;
+    case I::SettingsExplorerWindows: target=l.explorer_windows_row;break;
     case I::SettingsShellTags: target=l.shell_tags_row;break;
     case I::SettingsChangeTracking: target=l.change_tracking_row;break;
     case I::GlobalSearch: target=l.global_search_row;break;
@@ -930,6 +969,7 @@ float MainRenderer::SettingsDestinationOffset(const WindowViewModel& vm, int set
     case I::Exclusions: target=l.index_exclude_action;break;
     case I::ServerFolders: target=l.network_action[0];break;
     case I::ReleaseNotes: target=l.release_card;break;
+    case I::SettingsAutoUpdate: target=l.update_auto_row;break;
     default: return 0;
     }
     return (std::max)(0.0f,target.top-l.content_origin-20*scale_);

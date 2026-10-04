@@ -43,7 +43,7 @@ void Write(const std::string& line) {
 }
 }
 FilenameTiming::Token FilenameTiming::Begin() noexcept {
-    if (!IndexDiagnosticsEnabled()) return {};
+    if (!IndexDiagnosticsEnabled() && !diagnostics::runtime::Enabled()) return {};
     FILETIME created{}, exited{}, kernel{}, user{};
     GetThreadTimes(GetCurrentThread(), &created, &exited, &kernel, &user);
     LARGE_INTEGER now{}, frequency{};
@@ -53,7 +53,7 @@ FilenameTiming::Token FilenameTiming::Begin() noexcept {
         (FileTimeValue(kernel) + FileTimeValue(user)) / 10};
 }
 void FilenameTiming::End(FilenameStage stage, Token token, uint64_t changes, DWORD error, const char* reason, wchar_t volume) noexcept {
-    if (!IndexDiagnosticsEnabled()) return;
+    if (!IndexDiagnosticsEnabled() && !diagnostics::runtime::Enabled()) return;
     const auto now = Begin();
     auto& counter = counters_[static_cast<size_t>(stage)];
     ++counter.calls;
@@ -65,10 +65,18 @@ void FilenameTiming::End(FilenameStage stage, Token token, uint64_t changes, DWO
     counter.volume = volume;
 }
 void FilenameTiming::Flush(bool force) noexcept {
-    if (!IndexDiagnosticsEnabled()) return;
+    if (!IndexDiagnosticsEnabled() && !diagnostics::runtime::Enabled()) return;
     const auto now = GetTickCount64();
     if (!force && last_flush_ && now - last_flush_ < 60000) return;
     last_flush_ = now;
+    for (size_t i = 0; i < counters_.size(); ++i) {
+        const auto& c = counters_[i];
+        if (!c.calls) continue;
+        diagnostics::runtime::Event("index_stage_totals", {{"stage", i}, {"calls", c.calls},
+            {"wall_us", c.wall_us}, {"cpu_us", c.cpu_us}, {"changes", c.changes},
+            {"errors", c.errors}, {"last_error", c.last_error}});
+    }
+    if (!IndexDiagnosticsEnabled()) return;
     memory_.Capture(IndexMemoryPoint::TimingFlush);
     try {
         FILETIME time{}; GetSystemTimeAsFileTime(&time);

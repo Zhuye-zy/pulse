@@ -16,6 +16,9 @@ public:
         std::function<void()> will_change_layout;
         // Replaces `path` with the default location when new tabs open there.
         std::function<bool(std::wstring&)> default_new_tab;
+        // Closing the only tab closes the window when this returns true.
+        std::function<bool()> last_tab_closes_window;
+        std::function<void()> close_window;
     };
 
     explicit TabController(Callbacks callbacks = {}) : callbacks_(std::move(callbacks)) {}

@@ -28,7 +28,22 @@ std::vector<IndexedFolderSize> Engine::FolderSizes(const std::vector<std::wstrin
         }
     }
     if (!covered) return result;
-    if (!folder_sizes_.Valid() && !folder_sizes_.Build(LiveCount(), [this](int32_t id) { return FolderSizeItem(id); })) return result;
+    if (!folder_sizes_.Valid()) {
+        if (GetTickCount64() < folder_size_retry_after_) return result;
+        const auto started = GetTickCount64();
+        if (!folder_sizes_.Build(LiveCount(), [this](int32_t id) { return FolderSizeItem(id); })) {
+            diagnostics::runtime::Event("index_folder_totals_failed", {{"nodes", static_cast<uint64_t>(LiveCount())},
+                {"elapsed_ms", GetTickCount64() - started}, {"retry_ms", 30000}});
+            // Incomplete/cyclic metadata must stay unknown, without rescanning
+            // millions of nodes on every client poll. Snapshot replacement
+            // resets this delay; ordinary journal edits retry within 30 seconds.
+            folder_size_retry_after_ = GetTickCount64() + 30000;
+            return result;
+        }
+        diagnostics::runtime::Event("index_folder_totals_ready", {{"nodes", static_cast<uint64_t>(LiveCount())},
+            {"elapsed_ms", GetTickCount64() - started}});
+        folder_size_retry_after_ = 0;
+    }
     for (size_t i = 0; i < ids.size(); ++i) if (const auto bytes = folder_sizes_.Get(ids[i])) result[i] = {true, *bytes};
     return result;
 }

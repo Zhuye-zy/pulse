@@ -37,12 +37,15 @@ New-Item -ItemType Directory -Path $build -Force | Out-Null
 # Release verification is scoped to the changes being shipped. pulse already
 # depends on all three packaged hosts; standalone tests need explicit targets.
 $testNames = @('pulse_rename_ops_test', 'pulse_child_edit_test', 'pulse_localization_test',
-    'pulse_update_test', 'pulse_update_installer_test', 'pulse_app_controllers_test',
-    'pulse_change_tracking_polling_test', 'pulse_change_tracking_test',
+    'pulse_update_test', 'pulse_update_installer_test', 'pulse_update_session_test', 'pulse_app_controllers_test',
+    'pulse_change_tracking_polling_test', 'pulse_change_tracking_test', 'pulse_index_delta_replay_test',
+    'pulse_runtime_log_test', 'pulse_diagnostics_export_test', 'pulse_shell_command_test', 'pulse_reparse_entry_test',
+    'pulse_link_destination_test', 'pulse_link_pill_test', 'pulse_shell_icons_test',
     'pulse_change_tracking_memory_test', 'pulse_change_feed_memory_test', 'pulse_usn_packet_queue_test',
-    'pulse_content_progress_ui_test', 'pulse_operation_presentation_test', 'pulse_column_strip_test')
+    'pulse_content_progress_ui_test', 'pulse_operation_presentation_test', 'pulse_column_strip_test',
+    'pulse_file_lock_test', 'pulse_dialogs_test')
 $testTargets = (@('pulse', 'pulse_index_engine_test', 'pulse_index_host_stress',
-    'pulse_preview_test', 'pulse_preview_handler_probe', 'pulse_playback_controls_test') + $testNames) -join ' '
+    'pulse_preview_test', 'pulse_preview_handler_probe', 'pulse_playback_controls_test', 'pulse_ops_test') + $testNames) -join ' '
 $batch = Join-Path $build 'compile-release.bat'
 @"
 @echo off
@@ -62,6 +65,8 @@ foreach ($testName in $testNames) {
     & (Join-Path $build "$testName.exe")
     if ($LASTEXITCODE -ne 0) { throw "$testName failed" }
 }
+& (Join-Path $build 'pulse_ops_test.exe') --update-shutdown
+if ($LASTEXITCODE -ne 0) { throw 'Update shutdown and automatic wait regression failed' }
 & (Join-Path $build 'pulse_playback_controls_test.exe') --timeline-only
 if ($LASTEXITCODE -ne 0) { throw 'Playback timeline regression failed' }
 & (Join-Path $build 'pulse_preview_test.exe') --vector-only
@@ -74,7 +79,7 @@ foreach ($mode in @('--startup-stop', '--shell-roundtrip')) {
 }
 $env:PULSE_SELFTEST_NO_SCREENSHOTS = '1'
 foreach ($mode in @('--parent-cycle-only', '--quiet-maintenance-only', '--name-pool-only',
-    '--maintenance-only', '--usn-only', '--feed-only', '--folder-sizes-only')) {
+    '--maintenance-only', '--usn-only', '--feed-only', '--folder-sizes-only', '--hierarchy-only', '--visibility-cache-only')) {
     & (Join-Path $build 'pulse_index_engine_test.exe') $mode
     if ($LASTEXITCODE -ne 0) { throw "Index regression $mode failed" }
 }
@@ -152,3 +157,8 @@ $arguments = @("/DAppVersion=$version", "/DBuildDir=$build")
 if ($Channel -eq 'win81') { $arguments += '/DWin81Candidate=1' }
 & $iscc @arguments installer/PulseSetup.iss
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+# The portable ZIP targets Windows 10/11 x64, so only the normal channel packages it,
+# from the same verified production build as the installer.
+if ($Channel -eq 'windows') {
+    & (Join-Path $repo 'scripts/package_portable.ps1') -BuildDir $build
+}

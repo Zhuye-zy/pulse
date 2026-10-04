@@ -1,8 +1,11 @@
 #include "app_updates.h"
+#include "update_shutdown.h"
 #include "app_state.h"
 #include "app_internal.h"
+#include "app_runtime.h"
 #include "pulse_version.h"
 #include "../common/localization.h"
+#include "../common/runtime_log.h"
 #include <cstdio>
 
 namespace pulse {
@@ -14,10 +17,25 @@ void ShowInstallError(AppState& state) {
         state.update_install_error == ERROR_BUSY ? StringId::UpdateBusy : StringId::UpdateInstallFailed;
     state.notification_toast.Show(state.hwnd, l10n::Get(StringId::Update), l10n::Get(message));
 }
+
+void LaunchReadyUpdate(AppState& state) {
+    const auto phase = state.update_installer.Progress().phase;
+    if (phase != app::UpdatePhase::Ready && phase != app::UpdatePhase::WaitingOperations) return;
+    DWORD error = ERROR_SUCCESS;
+    const bool idle = app::RequestUpdateLaunch(state.ops, state.settings.migration_pending(), [&] {
+        state.update_installer.Launch(state.hwnd, error);
+    });
+    if (!idle) state.update_installer.WaitForOperations();
+    if (error) {
+        state.update_install_error = error;
+        state.update_installer.Stop();
+        ShowInstallError(state);
+    }
+}
 }
 
 void CheckForUpdates(AppState& state) {
-    if (state.update_installer.downloading() || state.update_installer.installing()) return;
+    if (state.update_installer.Progress().active()) return;
     if (state.update_checker.CheckAsync(state.hwnd, WM_UPDATE_RESULT)) {
         state.update_result_ready = false;
         state.update_install_error = ERROR_SUCCESS;
@@ -26,7 +44,33 @@ void CheckForUpdates(AppState& state) {
     }
 }
 
+LRESULT CloseForUpdate(AppState& state) {
+    const HWND window = state.hwnd;
+    const auto operation_id = diagnostics::runtime::NextId();
+    const auto started = GetTickCount64();
+    diagnostics::runtime::Event("update_shutdown_request", {{"operation", operation_id}});
+    bool save_failed = false;
+    const LRESULT result = app::RequestUpdateShutdown(state.ops, state.settings.migration_pending(), [&] {
+        diagnostics::runtime::Event("update_session_save_start", {{"operation", operation_id}});
+        const bool saved = PrepareSessionForUpdate(state);
+        diagnostics::runtime::Event("update_session_save_end", {{"operation", operation_id},
+            {"ok", saved}, {"elapsed_ms", GetTickCount64() - started}});
+        if (!saved) { save_failed = true; return false; }
+        diagnostics::runtime::Event("update_shutdown_destroy", {{"operation", operation_id}});
+        if (DestroyWindow(window)) return true;
+        const DWORD error = GetLastError();
+        diagnostics::runtime::Event("update_shutdown_destroy_failed", {{"operation", operation_id}, {"code", error}});
+        state.updateSessionPrepared = false;
+        return false;
+    });
+    diagnostics::runtime::Event("update_shutdown_result", {{"operation", operation_id},
+        {"result", static_cast<uint64_t>(save_failed ? app::kUpdateShutdownSaveFailed : result)},
+        {"elapsed_ms", GetTickCount64() - started}});
+    return save_failed ? app::kUpdateShutdownSaveFailed : result;
+}
+
 void TickUpdates(AppState& state, unsigned long long now) {
+    LaunchReadyUpdate(state);
     DWORD install_error = ERROR_SUCCESS;
     if (state.update_installer.TakeInstallResult(install_error)) {
         state.update_install_error = install_error;
@@ -50,8 +94,9 @@ void TickUpdates(AppState& state, unsigned long long now) {
                                       false, WM_SHOW_RELEASE_NOTES);
         state.whatsNewVersion.clear();
     }
-    if (state.shot.active || !app::UpdateChecker::Enabled() || now < state.next_update_check) return;
-    if (state.update_installer.downloading() || state.update_installer.installing() || state.update_checker.checking()) return;
+    if (state.shot.active || !app::UpdateChecker::Enabled() || !state.appPrefs.auto_check_updates ||
+        now < state.next_update_check) return;
+    if (state.update_installer.Progress().active() || state.update_checker.checking()) return;
     state.next_update_check = now + kCheckInterval;
     CheckForUpdates(state);
 }
@@ -83,7 +128,7 @@ void ShowReleaseNotes(AppState& state) {
 
 void InstallUpdate(AppState& state) {
     if (state.update_installer.installing()) return;
-    if (state.update_installer.downloading()) {
+    if (state.update_installer.Progress().active()) {
         state.update_installer.Stop();
         state.update_install_error = ERROR_CANCELLED;
     } else if (state.update_result_ready && state.update_result.update_available) {
@@ -113,12 +158,12 @@ void CompleteUpdateCheck(AppState& state) {
 void CompleteUpdateDownload(AppState& state) {
     DWORD error = ERROR_SUCCESS;
     if (!state.update_installer.TakeResult(error)) return;
-    if (!error && (state.ops.Status().active || state.settings.migration_pending())) error = ERROR_BUSY;
     if (!error) {
         // Paint the verified/starting stage before ShellExecute can enter an elevation prompt.
         InvalidateRect(state.hwnd, nullptr, FALSE);
         UpdateWindow(state.hwnd);
-        state.update_installer.Launch(state.hwnd, error);
+        LaunchReadyUpdate(state);
+        return;
     }
     state.update_install_error = error;
     if (error) {

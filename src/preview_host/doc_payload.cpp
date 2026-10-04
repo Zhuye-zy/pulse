@@ -79,8 +79,17 @@ void DocPayload::Begin(wchar_t kind, std::wstring arg, int quote, int indent, st
 }
 
 void DocPayload::Text(std::wstring_view text, unsigned flags, const std::wstring& target) {
-    if (!open_ || text.empty()) return;
-    if (text_.size() > 200000) return;  // one runaway block
+    if (!open_ || text.empty() || text_truncated_) return;
+    constexpr size_t kMaxBlockChars = 200000;
+    size_t count = (std::min)(text.size(), kMaxBlockChars - text_.size());
+    if (count < text.size()) {
+        text_truncated_ = true;
+        if (count && text[count - 1] >= 0xD800 && text[count - 1] <= 0xDBFF) --count;
+        if (!count && !text_.empty() && text_.back() >= 0xD800 && text_.back() <= 0xDBFF)
+            text_.pop_back();
+    }
+    text = text.substr(0, count);
+    if (text.empty()) return;
     const size_t start = text_.size();
     text_.append(text);
     if (!flags) return;

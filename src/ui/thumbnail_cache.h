@@ -1,6 +1,7 @@
 #pragma once
 #include "ui_compositor.h"
 #include "preview_viewport.h"
+#include "icon_artwork_bounds.h"
 #include "../ipc/preview_protocol.h"
 #include <atomic>
 #include <condition_variable>
@@ -40,6 +41,8 @@ public:
     // pan_x/pan_y non-null: cover mode (fill dest, crop overflow) with a
     // draggable pan offset in DIPs; values are clamped and written back.
     // pan_max_x/pan_max_y (optional) receive the current pan limits.
+    // align_artwork_bottom applies only to contain mode. artwork_rect receives
+    // the drawn alpha bounds in destination coordinates (dest while pending).
     PreviewDrawResult Draw(ID2D1DeviceContext* dc, const D2D1_RECT_F& dest,
                            const std::wstring& path, DWORD attrs, uint32_t pixel_size,
                            uint64_t generation, uint64_t modified, uint64_t size,
@@ -53,7 +56,13 @@ public:
                            uint32_t* decoded_width = nullptr, uint32_t* decoded_height = nullptr,
                            uint32_t* source_width = nullptr, uint32_t* source_height = nullptr,
                            PreviewViewport* viewport = nullptr,
-                           uint32_t* text_encoding = nullptr);
+                           uint32_t* text_encoding = nullptr,
+                           bool align_artwork_bottom = false,
+                           D2D1_RECT_F* artwork_rect = nullptr);
+    PreviewDrawResult DrawGridThumbnail(ID2D1DeviceContext* dc, const D2D1_RECT_F& dest,
+        const std::wstring& path, DWORD attrs, uint32_t pixel_size, uint64_t generation,
+        uint64_t modified, uint64_t size, float opacity, bool align_bottom,
+        D2D1_RECT_F* artwork);
     bool Properties(const std::wstring& path, DWORD attrs, uint64_t generation,
                     uint64_t modified, uint64_t size,
                     std::vector<PreviewProperty>& properties);
@@ -64,6 +73,7 @@ private:
     struct Item {
         ComPtr<ID2D1Bitmap> bitmap;
         std::vector<uint8_t> pixels;
+        IconArtworkBounds artwork_bounds;
         std::wstring text;
         std::wstring error;
         std::vector<PreviewProperty> properties;
@@ -105,6 +115,7 @@ private:
     Item* StaleBitmap(const std::wstring& identity, const std::wstring& except_key);
     static uint32_t ResponseTimeoutMs(const std::wstring& path, ipc::PreviewRequestKind kind);
     void Worker();
+    void SelectDetailsLocked(const std::wstring& identity);
     bool StoreResult(const Request& request, Item result);
     void Touch(Item& item);
     bool Connect();

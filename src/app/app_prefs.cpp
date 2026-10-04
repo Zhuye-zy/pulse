@@ -1,9 +1,14 @@
 // app_prefs.cpp — Persist general settings; sync 开机自启 with the Run key.
 #include "app_prefs.h"
+#include "blank_pane_click.h"
+#include "startup_launch.h"
+#include "default_file_manager.h"
+#include "shell_integration_registry.h"
 #include "win_e_agent.h"
 #include "session.h"
 #include "../ui/panel_metrics.h"
 #include "../common/json_utils.h"
+#include "../common/config_json.h"
 #include "../common/utf8_file.h"
 #include <windows.h>
 #include <shlwapi.h>
@@ -31,16 +36,13 @@ std::wstring ExePath() {
 
 namespace {
 
-void DeleteStoredWallpapers(const std::wstring& dir) {
-    static constexpr const wchar_t* kExt[] = {
-        L".jpg", L".jpeg", L".png", L".bmp", L".webp", L".jfif", L".img"
-    };
-    for (const wchar_t* ext : kExt)
-        DeleteFileW((dir + L"\\wallpaper" + ext).c_str());
-}
-
-bool SamePath(const std::wstring& a, const std::wstring& b) {
-    return CompareStringOrdinal(a.c_str(), -1, b.c_str(), -1, TRUE) == CSTR_EQUAL;
+bool IsStoredWallpaper(const std::wstring& path, const std::wstring& dir) {
+    const std::wstring prefix = dir + L"\\";
+    if (!path.starts_with(prefix)) return false;
+    const std::wstring name = path.substr(prefix.size());
+    return name.find_first_of(L"\\/") == std::wstring::npos &&
+        (name.starts_with(L"wallpaper.") ||
+         (name.starts_with(L"pwp") && name.find(L".tmp.") != std::wstring::npos));
 }
 
 } // namespace
@@ -48,7 +50,16 @@ bool SamePath(const std::wstring& a, const std::wstring& b) {
 void AppPrefs::ResetToDefaults() {
     launch_on_startup = false;
     keep_running_on_close = false;
+    notify_icon_mode = 0;
     open_folders_in_pulse = false;
+    take_over_win_e = false;
+    take_over_this_pc = false;
+    integration_enabled = false;
+    integration_folders = integration_win_e = integration_this_pc = true;
+    integration_configured = false;
+    integration_residual = false;
+    integration_incomplete = false;
+    take_over_explorer_windows = false;
     shell_tag_menu = false;
     verify_copies = false;
     show_status_performance = false;
@@ -56,12 +67,17 @@ void AppPrefs::ResetToDefaults() {
     list_smart_date = true;
     list_zebra_rows = true;
     list_size_bar = false;
+    list_selection_outline = false;
     folder_sort_mode = 0;
     details_columns = ui::kDetailsColumnsDefault;
     startup_open = 0;
     new_tab_open = 0;
+    close_window_with_last_tab = false;
+    confirm_recycle_delete = false;
+    start_in_tray = false;
     home_folder.clear();
     text_render = 0;
+    ui_font_scale = 100;
     folder_views.Clear();
     folder_sorts.Clear();
     folder_groups.Clear();
@@ -71,7 +87,7 @@ void AppPrefs::ResetToDefaults() {
     global_search_key = 32;
     show_hidden_files = false;
     show_protected_os_files = false;
-    blank_click_go_back = false;
+    blank_click_action = kBlankClickOff;
     change_tracking_enabled = false;
     change_tracking_days = 7;
     theme_mode = -1;
@@ -86,6 +102,7 @@ void AppPrefs::ResetToDefaults() {
     address_search_content = false;
     tray_icon_size = 48;
     show_hints = true;
+    auto_check_updates = true;
     tips_seen = 0;
     accent_rgb.clear();
     accent_follow_system = false;
@@ -108,8 +125,20 @@ std::wstring AppPrefs::ToJson() const {
     out += launch_on_startup ? L"true" : L"false";
     out += L",\n  \"keep_running_on_close\":";
     out += keep_running_on_close ? L"true" : L"false";
+    out += L",\n  \"notify_icon_mode\":";
+    out += std::to_wstring(notify_icon_mode >= 0 && notify_icon_mode <= 2 ? notify_icon_mode : 0);
     out += L",\n  \"open_folders_in_pulse\":";
     out += open_folders_in_pulse ? L"true" : L"false";
+    out += L",\n  \"integration_enabled\":";
+    out += integration_enabled ? L"true" : L"false";
+    out += L",\n  \"integration_folders\":";
+    out += integration_folders ? L"true" : L"false";
+    out += L",\n  \"integration_win_e\":";
+    out += integration_win_e ? L"true" : L"false";
+    out += L",\n  \"integration_this_pc\":";
+    out += integration_this_pc ? L"true" : L"false";
+    out += L",\n  \"take_over_explorer_windows\":";
+    out += take_over_explorer_windows ? L"true" : L"false";
     out += L",\n  \"shell_tag_menu\":";
     out += shell_tag_menu ? L"true" : L"false";
     out += L",\n  \"verify_copies\":";
@@ -126,6 +155,8 @@ std::wstring AppPrefs::ToJson() const {
     out += list_size_bar ? L"true" : L"false";
     out += L",\n  \"list_tag_name_color\":";
     out += list_tag_name_color ? L"true" : L"false";
+    out += L",\n  \"list_selection_outline\":";
+    out += list_selection_outline ? L"true" : L"false";
     out += L",\n  \"vertical_tabs\":";
     out += vertical_tabs ? L"true" : L"false";
     out += L",\n  \"sidebar_collapsed\":";
@@ -138,11 +169,19 @@ std::wstring AppPrefs::ToJson() const {
     out += startup_open == 1 ? L"1" : L"0";
     out += L",\n  \"new_tab_open\":";
     out += new_tab_open == 1 ? L"1" : L"0";
+    out += L",\n  \"close_window_with_last_tab\":";
+    out += close_window_with_last_tab ? L"true" : L"false";
+    out += L",\n  \"confirm_recycle_delete\":";
+    out += confirm_recycle_delete ? L"true" : L"false";
+    out += L",\n  \"start_in_tray\":";
+    out += start_in_tray ? L"true" : L"false";
     out += L",\n  \"home_folder\":\"";
     out += escaped_home;
     out += L"\"";
     out += L",\n  \"text_render\":";
     out += std::to_wstring(text_render >= 0 && text_render <= 2 ? text_render : 0);
+    out += L",\n  \"ui_font_scale\":";
+    out += std::to_wstring(NormalizeUiFontScale(ui_font_scale));
     out += L",\n  \"show_hidden_files\":";
     out += show_hidden_files ? L"true" : L"false";
     out += L",\n  \"show_protected_os_files\":";
@@ -153,8 +192,11 @@ std::wstring AppPrefs::ToJson() const {
     out += global_search_enabled ? L"true" : L"false";
     out += L",\n  \"global_search_modifiers\":" + std::to_wstring(global_search_modifiers);
     out += L",\n  \"global_search_key\":" + std::to_wstring(global_search_key);
+    out += L",\n  \"blank_click_action\":";
+    out += std::to_wstring(blank_click_action);
+    // Kept for older builds, which only know on/off.
     out += L",\n  \"blank_click_go_back\":";
-    out += blank_click_go_back ? L"true" : L"false";
+    out += blank_click_action != kBlankClickOff ? L"true" : L"false";
     out += L",\n  \"change_tracking_enabled\":";
     out += change_tracking_enabled ? L"true" : L"false";
     out += L",\n  \"change_tracking_days\":";
@@ -177,6 +219,8 @@ std::wstring AppPrefs::ToJson() const {
     out += std::to_wstring(tray_icon_size);
     out += L",\n  \"show_hints\":";
     out += show_hints ? L"true" : L"false";
+    out += L",\n  \"auto_check_updates\":";
+    out += auto_check_updates ? L"true" : L"false";
     out += L",\n  \"tips_seen\":" + std::to_wstring(tips_seen);
     // Legacy three-level keys stay for older builds reading the same app.json.
     out += L",\n  \"wallpaper_look\":";
@@ -236,13 +280,21 @@ std::wstring AppPrefs::ToJson() const {
 }
 
 bool AppPrefs::FromJson(const std::wstring& json) {
-    if (json.empty()) return false;
+    if (!pulse::json::ValidConfigObject(json)) return false;
     folder_views.ReadJson(json);
     folder_sorts.ReadJson(json);
     folder_groups.ReadJson(json);
     launch_on_startup = pulse::json::ExtractBool(json, L"launch_on_startup", false);
     keep_running_on_close = pulse::json::ExtractBool(json, L"keep_running_on_close", false);
+    notify_icon_mode = pulse::json::ExtractInt(json, L"notify_icon_mode", 0);
+    if (notify_icon_mode < 0 || notify_icon_mode > 2) notify_icon_mode = 0;
     open_folders_in_pulse = pulse::json::ExtractBool(json, L"open_folders_in_pulse", false);
+    take_over_explorer_windows = pulse::json::ExtractBool(json, L"take_over_explorer_windows", false);
+    integration_configured = json.find(L"\"integration_enabled\"") != std::wstring::npos;
+    integration_enabled = pulse::json::ExtractBool(json, L"integration_enabled", false);
+    integration_folders = pulse::json::ExtractBool(json, L"integration_folders", true);
+    integration_win_e = pulse::json::ExtractBool(json, L"integration_win_e", true);
+    integration_this_pc = pulse::json::ExtractBool(json, L"integration_this_pc", true);
     shell_tag_menu = pulse::json::ExtractBool(json, L"shell_tag_menu", false);
     verify_copies = pulse::json::ExtractBool(json, L"verify_copies", false);
     show_status_performance = pulse::json::ExtractBool(json, L"show_status_performance", false);
@@ -251,6 +303,7 @@ bool AppPrefs::FromJson(const std::wstring& json) {
     list_zebra_rows = pulse::json::ExtractBool(json, L"list_zebra_rows", true);
     list_size_bar = pulse::json::ExtractBool(json, L"list_size_bar", false);
     list_tag_name_color = pulse::json::ExtractBool(json, L"list_tag_name_color", false);
+    list_selection_outline = pulse::json::ExtractBool(json, L"list_selection_outline", false);
     vertical_tabs = pulse::json::ExtractBool(json, L"vertical_tabs", false);
     sidebar_collapsed = pulse::json::ExtractBool(json, L"sidebar_collapsed", false);
     folder_sort_mode = pulse::json::ExtractInt(json, L"folder_sort_mode", 0);
@@ -259,9 +312,13 @@ bool AppPrefs::FromJson(const std::wstring& json) {
         json, L"details_columns", static_cast<int>(ui::kDetailsColumnsDefault))));
     startup_open = pulse::json::ExtractInt(json, L"startup_open", 0) == 1 ? 1 : 0;
     new_tab_open = pulse::json::ExtractInt(json, L"new_tab_open", 0) == 1 ? 1 : 0;
+    close_window_with_last_tab = pulse::json::ExtractBool(json, L"close_window_with_last_tab", false);
+    confirm_recycle_delete = pulse::json::ExtractBool(json, L"confirm_recycle_delete", false);
+    start_in_tray = pulse::json::ExtractBool(json, L"start_in_tray", false);
     home_folder = pulse::json::ExtractString(json, L"home_folder");
     text_render = pulse::json::ExtractInt(json, L"text_render", 0);
     if (text_render < 0 || text_render > 2) text_render = 0;
+    ui_font_scale = NormalizeUiFontScale(pulse::json::ExtractInt(json, L"ui_font_scale", 100));
     search_pinyin = pulse::json::ExtractBool(json, L"search_pinyin", true);
     global_search_enabled = pulse::json::ExtractBool(json, L"global_search_enabled", false);
     const int modifiers = pulse::json::ExtractInt(json, L"global_search_modifiers", 1);
@@ -270,7 +327,9 @@ bool AppPrefs::FromJson(const std::wstring& json) {
     global_search_key = key > 0 && key <= 254 ? static_cast<uint32_t>(key) : 32;
     show_hidden_files = pulse::json::ExtractBool(json, L"show_hidden_files", false);
     show_protected_os_files = pulse::json::ExtractBool(json, L"show_protected_os_files", false);
-    blank_click_go_back = pulse::json::ExtractBool(json, L"blank_click_go_back", false);
+    // Files from before blank_click_action carry only the on/off flag (= back).
+    blank_click_action = NormalizeBlankClickAction(pulse::json::ExtractInt(json, L"blank_click_action",
+        pulse::json::ExtractBool(json, L"blank_click_go_back", false) ? kBlankClickBack : kBlankClickOff));
     change_tracking_enabled = pulse::json::ExtractBool(json, L"change_tracking_enabled", false);
     change_tracking_days = pulse::json::ExtractInt(json, L"change_tracking_days", 7);
     if (change_tracking_days != 1 && change_tracking_days != 3 && change_tracking_days != 7)
@@ -278,7 +337,8 @@ bool AppPrefs::FromJson(const std::wstring& json) {
     theme_mode = pulse::json::ExtractInt(json, L"theme_mode", -1);
     if (theme_mode < -1 || theme_mode > 2) theme_mode = -1;
     language = pulse::json::ExtractString(json, L"language", L"system");
-    if (language != L"system" && language != L"zh-CN" && language != L"en-US")
+    if (language != L"system" && language != L"zh-CN" && language != L"zh-TW" &&
+        language != L"en-US")
         language = L"system";
     window_effect = pulse::json::ExtractString(json, L"window_effect", L"mica-alt");
     if (window_effect == L"dwm-blur") window_effect = L"acrylic-material";
@@ -294,6 +354,7 @@ bool AppPrefs::FromJson(const std::wstring& json) {
     if (row_height < 24 || row_height > 48) row_height = 34;
     tray_icon_size = pulse::json::ExtractInt(json, L"tray_icon_size", 48);
     show_hints = pulse::json::ExtractBool(json, L"show_hints", true);
+    auto_check_updates = pulse::json::ExtractBool(json, L"auto_check_updates", true);
     const int seen = pulse::json::ExtractInt(json, L"tips_seen", 0);
     tips_seen = seen > 0 ? static_cast<uint32_t>(seen) : 0u;
     if (tray_icon_size < 32 || tray_icon_size > 64) tray_icon_size = 48;
@@ -342,49 +403,53 @@ bool AppPrefs::FromJson(const std::wstring& json) {
 bool AppPrefs::StoreBackgroundImage(const std::wstring& source_path) {
     if (source_path.empty()) return false;
     const std::wstring dir = GetPulseDataDir();
-    if (dir.empty()) {
-        background_image = source_path;
-        return true;
-    }
+    if (dir.empty() || load_failed) return false;
     const wchar_t* ext = PathFindExtensionW(source_path.c_str());
-    std::wstring dest = dir + L"\\wallpaper";
-    dest += (ext && ext[0]) ? ext : L".img";
-    if (!SamePath(source_path, dest)) {
-        DeleteStoredWallpapers(dir);
-        if (!CopyFileW(source_path.c_str(), dest.c_str(), FALSE)) {
-            background_image = source_path;
-            return true;
-        }
+    wchar_t temporary[MAX_PATH]{};
+    if (!GetTempFileNameW(dir.c_str(), L"pwp", 0, temporary)) return false;
+    const std::wstring staged = temporary;
+    const std::wstring dest = staged + ((ext && ext[0]) ? ext : L".img");
+    if (!CopyFileW(source_path.c_str(), staged.c_str(), FALSE) ||
+        !MoveFileExW(staged.c_str(), dest.c_str(), MOVEFILE_WRITE_THROUGH)) {
+        DeleteFileW(staged.c_str());
+        return false;
     }
+    const std::wstring previous = background_image;
     background_image = dest;
+    if (!Save()) {
+        background_image = previous;
+        DeleteFileW(dest.c_str());
+        return false;
+    }
+    if (IsStoredWallpaper(previous, dir)) DeleteFileW(previous.c_str());
     return true;
 }
 
 void AppPrefs::ClearBackgroundImage() {
     const std::wstring dir = GetPulseDataDir();
-    if (!dir.empty() && !background_image.empty()) {
-        const std::wstring prefix = dir + L"\\wallpaper";
-        if (background_image.size() >= prefix.size() &&
-            CompareStringOrdinal(background_image.c_str(), static_cast<int>(prefix.size()),
-                                 prefix.c_str(), static_cast<int>(prefix.size()), TRUE) == CSTR_EQUAL) {
-            DeleteFileW(background_image.c_str());
-        }
-    }
+    if (IsStoredWallpaper(background_image, dir)) DeleteFileW(background_image.c_str());
     background_image.clear();
 }
 
-bool AppPrefs::ReadLaunchOnStartup() const {
+namespace {
+// The HKCU Run command for Pulse, or empty when there is none.
+std::wstring ReadRunCommand() {
     HKEY key = nullptr;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunKey, 0, KEY_QUERY_VALUE, &key) != ERROR_SUCCESS)
-        return false;
-    wchar_t value[MAX_PATH] = {};
-    DWORD bytes = sizeof(value);
+        return {};
+    wchar_t value[1024] = {};
+    DWORD bytes = sizeof(value) - sizeof(wchar_t);
     DWORD type = 0;
     const LONG st = RegQueryValueExW(key, kRunValue, nullptr, &type,
                                      reinterpret_cast<LPBYTE>(value), &bytes);
     RegCloseKey(key);
-    if (st != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ)) return false;
-    return value[0] != 0;
+    if (st != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ)) return {};
+    return value;
+}
+} // namespace
+
+bool AppPrefs::ReadLaunchOnStartup() const {
+    return !ReadRunCommand().empty();
 }
 
 bool AppPrefs::ApplyLaunchOnStartup(bool on) {
@@ -397,7 +462,8 @@ bool AppPrefs::ApplyLaunchOnStartup(bool on) {
     if (on) {
         const std::wstring exe = ExePath();
         if (exe.empty()) { RegCloseKey(key); return false; }
-        const std::wstring cmd = L"\"" + exe + L"\"";
+        // --startup tells a sign-in launch apart (start_in_tray).
+        const std::wstring cmd = StartupCommandLine(exe);
         st = RegSetValueExW(key, kRunValue, 0, REG_SZ,
                             reinterpret_cast<const BYTE*>(cmd.c_str()),
                             static_cast<DWORD>((cmd.size() + 1) * sizeof(wchar_t)));
@@ -415,232 +481,65 @@ std::wstring FolderOpenCommandLine(const std::wstring& exe) {
 }
 
 bool FolderOpenCommandIsOurs(const std::wstring& command, const std::wstring& exe) {
-    if (command.empty() || exe.empty()) return false;
-    size_t i = 0;
-    while (i < command.size() && iswspace(command[i])) ++i;
-    std::wstring token;
-    if (i < command.size() && command[i] == L'"') {
-        ++i;
-        const size_t start = i;
-        while (i < command.size() && command[i] != L'"') ++i;
-        token = command.substr(start, i - start);
-    } else {
-        const size_t start = i;
-        while (i < command.size() && !iswspace(command[i])) ++i;
-        token = command.substr(start, i - start);
-    }
-    return !token.empty() &&
-           CompareStringOrdinal(token.c_str(), -1, exe.c_str(), -1, TRUE) == CSTR_EQUAL;
+    return ShellCommandTargetsExecutable(command, exe);
 }
-
-namespace {
-
-constexpr const wchar_t* kFolderOpenClasses[] = { L"Directory", L"Drive" };
-
-std::wstring FolderOpenKey(const wchar_t* cls) {
-    return std::wstring(L"Software\\Classes\\") + cls + L"\\shell\\open";
-}
-
-std::wstring FolderShellKey(const wchar_t* cls) {
-    return std::wstring(L"Software\\Classes\\") + cls + L"\\shell";
-}
-
-std::wstring ReadRegDefault(const std::wstring& key) {
-    HKEY h = nullptr;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, key.c_str(), 0, KEY_QUERY_VALUE, &h) != ERROR_SUCCESS)
-        return {};
-    wchar_t value[1024] = {};
-    DWORD bytes = sizeof(value);
-    DWORD type = 0;
-    const LONG st = RegQueryValueExW(h, nullptr, nullptr, &type,
-                                     reinterpret_cast<LPBYTE>(value), &bytes);
-    RegCloseKey(h);
-    if (st != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ)) return {};
-    return value;
-}
-
-bool WriteFolderOpenClass(const wchar_t* cls, const std::wstring& exe) {
-    const std::wstring open = FolderOpenKey(cls);
-    const std::wstring command = open + L"\\command";
-    HKEY h = nullptr;
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, command.c_str(), 0, nullptr, 0,
-                        KEY_SET_VALUE, nullptr, &h, nullptr) != ERROR_SUCCESS)
-        return false;
-    const std::wstring line = FolderOpenCommandLine(exe);
-    const LONG st = RegSetValueExW(h, nullptr, 0, REG_SZ,
-                                   reinterpret_cast<const BYTE*>(line.c_str()),
-                                   static_cast<DWORD>((line.size() + 1) * sizeof(wchar_t)));
-    RegCloseKey(h);
-    if (st != ERROR_SUCCESS) return false;
-    h = nullptr;
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, open.c_str(), 0, nullptr, 0,
-                        KEY_SET_VALUE, nullptr, &h, nullptr) != ERROR_SUCCESS)
-        return false;
-    const wchar_t empty[] = L"";
-    const LONG de = RegSetValueExW(h, L"DelegateExecute", 0, REG_SZ,
-                                   reinterpret_cast<const BYTE*>(empty), sizeof(wchar_t));
-    RegCloseKey(h);
-    if (de != ERROR_SUCCESS) return false;
-
-    // HKLM Directory/Drive shell default is "none", so double-click never uses
-    // the open verb and falls through to Folder → Explorer. Point HKCU at open.
-    h = nullptr;
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, FolderShellKey(cls).c_str(), 0, nullptr, 0,
-                        KEY_SET_VALUE, nullptr, &h, nullptr) != ERROR_SUCCESS)
-        return false;
-    const wchar_t open_verb[] = L"open";
-    const LONG def = RegSetValueExW(h, nullptr, 0, REG_SZ,
-                                    reinterpret_cast<const BYTE*>(open_verb),
-                                    sizeof(open_verb));
-    RegCloseKey(h);
-    return def == ERROR_SUCCESS;
-}
-
-bool ClearFolderOpenClass(const wchar_t* cls, const std::wstring& exe) {
-    const std::wstring command = ReadRegDefault(FolderOpenKey(cls) + L"\\command");
-    if (!command.empty() && !FolderOpenCommandIsOurs(command, exe)) return true;
-    SHDeleteKeyW(HKEY_CURRENT_USER, FolderOpenKey(cls).c_str());
-    const std::wstring shell = FolderShellKey(cls);
-    if (_wcsicmp(ReadRegDefault(shell).c_str(), L"open") == 0) {
-        HKEY h = nullptr;
-        if (RegOpenKeyExW(HKEY_CURRENT_USER, shell.c_str(), 0, KEY_SET_VALUE, &h) == ERROR_SUCCESS) {
-            RegDeleteValueW(h, nullptr);
-            RegCloseKey(h);
-        }
-    }
-    return true;
-}
-
-void NotifyAssocChanged() {
-    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
-}
-
-bool FolderOpenClassIsConfigured(const wchar_t* cls, const std::wstring& exe) {
-    const std::wstring command = ReadRegDefault(FolderOpenKey(cls) + L"\\command");
-    if (!FolderOpenCommandIsOurs(command, exe)) return false;
-    // Keep the repair path for older installs that wrote the command but left
-    // the class default verb as "none" (the HKLM default).
-    return _wcsicmp(ReadRegDefault(FolderShellKey(cls)).c_str(), L"open") == 0;
-}
-
-bool FolderOpenClassNeedsClear(const wchar_t* cls, const std::wstring& exe) {
-    const std::wstring command = ReadRegDefault(FolderOpenKey(cls) + L"\\command");
-    if (!command.empty()) return FolderOpenCommandIsOurs(command, exe);
-    // A previous cleanup or an interrupted registration can leave only the
-    // HKCU shell default behind; ClearFolderOpenClass removes that residue.
-    return _wcsicmp(ReadRegDefault(FolderShellKey(cls)).c_str(), L"open") == 0;
-}
-
-} // namespace
 
 bool AppPrefs::ReadFolderOpen() const {
+    return ReadShellIntegration(ShellIntegrationKind::Folders, ExePath());
+}
+
+bool AppPrefs::ReadIntegrationResidual() const {
     const std::wstring exe = ExePath();
-    if (exe.empty()) return false;
-    const std::wstring command =
-        ReadRegDefault(FolderOpenKey(L"Directory") + L"\\command");
-    return FolderOpenCommandIsOurs(command, exe);
+    return HasShellIntegrationOwnership(ShellIntegrationKind::Folders, exe) ||
+           HasShellIntegrationOwnership(ShellIntegrationKind::WinE, exe) ||
+           HasShellIntegrationOwnership(ShellIntegrationKind::ThisPc, exe);
+}
+
+bool AppPrefs::ReadIntegrationIncomplete() const {
+    const std::wstring exe = ExePath();
+    for (const auto kind : {ShellIntegrationKind::Folders, ShellIntegrationKind::WinE, ShellIntegrationKind::ThisPc})
+        if (HasShellIntegrationOwnership(kind, exe) && !ReadShellIntegration(kind, exe)) return true;
+    return false;
 }
 
 bool AppPrefs::ApplyFolderOpen(bool on) {
     if (!persist) { open_folders_in_pulse = on; return true; }
-    const std::wstring exe = ExePath();
-    if (exe.empty()) return false;
-    bool ok = true;
-    bool changed = false;
-    for (const wchar_t* cls : kFolderOpenClasses) {
-        if (on) {
-            // Load() calls this to repair old registrations. Avoid rewriting
-            // an already-correct association and rebroadcasting a global
-            // Explorer refresh every time Pulse is launched by the shell.
-            if (!FolderOpenClassIsConfigured(cls, exe)) {
-                changed = true;
-                ok = WriteFolderOpenClass(cls, exe) && ok;
-            }
-        } else {
-            if (FolderOpenClassNeedsClear(cls, exe)) {
-                changed = true;
-                ok = ClearFolderOpenClass(cls, exe) && ok;
-            }
-        }
-    }
-    if (changed && ok) NotifyAssocChanged();
-    if (!ok) {
-        open_folders_in_pulse = ReadFolderOpen();
-        return false;
-    }
-    open_folders_in_pulse = on;
-    return ok;
+    const bool ok = ApplyShellIntegration(ShellIntegrationKind::Folders, ExePath(), on);
+    open_folders_in_pulse = ReadFolderOpen();
+    integration_residual = ReadIntegrationResidual();
+    integration_incomplete = ReadIntegrationIncomplete();
+    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
+    return ok && open_folders_in_pulse == on;
 }
-
-namespace {
-constexpr wchar_t kWinEVerbKey[] =
-    L"Software\\Classes\\CLSID\\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}\\shell\\opennewwindow";
-constexpr wchar_t kWinEBackupValue[] = L"PulseBackup";
-
-bool SetRegString(HKEY key, const wchar_t* name, const std::wstring& value) {
-    return RegSetValueExW(key, name, 0, REG_SZ, reinterpret_cast<const BYTE*>(value.c_str()),
-                          static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t))) == ERROR_SUCCESS;
-}
-
-std::wstring ReadRegString(const std::wstring& path, const wchar_t* name) {
-    HKEY h = nullptr;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, path.c_str(), 0, KEY_QUERY_VALUE, &h) != ERROR_SUCCESS)
-        return {};
-    wchar_t value[2048]{};
-    DWORD bytes = sizeof(value) - sizeof(wchar_t);
-    DWORD type = 0;
-    const LONG st = RegQueryValueExW(h, name, nullptr, &type, reinterpret_cast<LPBYTE>(value), &bytes);
-    RegCloseKey(h);
-    if (st != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ)) return {};
-    return value;
-}
-} // namespace
 
 bool AppPrefs::ReadWinE() const {
-    return win_e_agent::Enabled(ExePath());
+    const std::wstring exe = ExePath();
+    return win_e_agent::Enabled(exe) || ReadShellIntegration(ShellIntegrationKind::WinE, exe);
 }
 
 bool AppPrefs::ApplyWinE(bool on) {
     if (!persist) { take_over_win_e = on; return true; }
     const std::wstring exe = ExePath();
     if (exe.empty()) return false;
-    if (!win_e_agent::SetEnabled(exe, on)) {
-        take_over_win_e = ReadWinE();
-        return false;
-    }
+    const bool shell_ok = ApplyShellIntegration(ShellIntegrationKind::WinE, exe, on);
+    const bool agent_ok = win_e_agent::SetEnabled(exe, on);
     take_over_win_e = ReadWinE();
-    const std::wstring verb = kWinEVerbKey;
-    const std::wstring command_key = verb + L"\\command";
-    const std::wstring current = ReadRegString(command_key, nullptr);
-    const bool ours = FolderOpenCommandIsOurs(current, exe);
-    if (!ours) return true; // someone else's command (or none): leave it alone
-    const std::wstring backup = ReadRegString(command_key, kWinEBackupValue);
-    if (!backup.empty()) {
-        HKEY h = nullptr;
-        if (RegOpenKeyExW(HKEY_CURRENT_USER, command_key.c_str(), 0, KEY_SET_VALUE, &h) != ERROR_SUCCESS)
-            return false;
-        bool ok = SetRegString(h, nullptr, backup);
-        const LONG delegate_deleted = RegDeleteValueW(h, L"DelegateExecute");
-        ok = (delegate_deleted == ERROR_SUCCESS || delegate_deleted == ERROR_FILE_NOT_FOUND) && ok;
-        if (ok) RegDeleteValueW(h, kWinEBackupValue);
-        RegCloseKey(h);
-        if (!ok) {
-            take_over_win_e = ReadWinE();
-            return false;
-        }
-        return true;
-    }
-    const LONG deleted = SHDeleteKeyW(HKEY_CURRENT_USER, verb.c_str());
-    if (deleted != ERROR_SUCCESS && deleted != ERROR_FILE_NOT_FOUND) return false;
-    // Drop the now-empty parents so Explorer falls back to its HKLM defaults.
-    const std::wstring shell = verb.substr(0, verb.rfind(L'\\'));
-    SHDeleteEmptyKeyW(HKEY_CURRENT_USER, shell.c_str());
-    SHDeleteEmptyKeyW(HKEY_CURRENT_USER, shell.substr(0, shell.rfind(L'\\')).c_str());
-    return true;
+    integration_residual = ReadIntegrationResidual();
+    integration_incomplete = ReadIntegrationIncomplete();
+    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
+    return shell_ok && agent_ok && take_over_win_e == on;
 }
-
 int MenuRowHeightDip(int list_row_height) noexcept {
     return std::clamp(list_row_height + 2, 28, 40);
+}
+int NormalizeUiFontScale(int percent) noexcept {
+    return percent == 90 || percent == 112 || percent == 125 ? percent : 100;
+}
+int EffectiveRowHeightDip(int list_row_height, int ui_font_scale) noexcept {
+    const int scale = NormalizeUiFontScale(ui_font_scale);
+    // 28 DIPs is the compact row that still fits 100% text; grow it with the font.
+    const int minimum = scale > 100 ? (28 * scale + 99) / 100 : 0;
+    return std::max(list_row_height, minimum);
 }
 
 bool ParseAccentRgb(const std::wstring& text, uint32_t& rgb) noexcept {
@@ -658,43 +557,71 @@ bool ParseAccentRgb(const std::wstring& text, uint32_t& rgb) noexcept {
     return true;
 }
 
+void AppPrefs::MigrateIntegration() {
+    if (integration_configured) return;
+    // Legacy registrations can still own an entry without satisfying the new
+    // complete-value checks. Preserve that selected scope for repair.
+    const std::wstring exe = integration_residual ? ExePath() : std::wstring();
+    const bool folders = open_folders_in_pulse || (integration_residual &&
+        HasShellIntegrationOwnership(ShellIntegrationKind::Folders, exe));
+    const bool win_e = take_over_win_e || (integration_residual &&
+        HasShellIntegrationOwnership(ShellIntegrationKind::WinE, exe));
+    const bool this_pc = take_over_this_pc || (integration_residual &&
+        HasShellIntegrationOwnership(ShellIntegrationKind::ThisPc, exe));
+    const bool registered = folders || win_e || this_pc;
+    integration_enabled = registered || take_over_explorer_windows;
+    if (registered || take_over_explorer_windows) {
+        integration_folders = folders;
+        integration_win_e = win_e;
+        integration_this_pc = this_pc;
+    }
+    integration_configured = true;
+}
+
 bool AppPrefs::Load() {
     const std::wstring dir = GetPulseDataDir();
     if (dir.empty()) {
         launch_on_startup = ReadLaunchOnStartup();
         open_folders_in_pulse = ReadFolderOpen();
         take_over_win_e = ReadWinE();
-        if (persist) {
-            const std::wstring exe = ExePath();
-            const std::wstring legacy_command = std::wstring(kWinEVerbKey) + L"\\command";
-            if (FolderOpenCommandIsOurs(ReadRegString(legacy_command, nullptr), exe))
-                ApplyWinE(true);
-        }
+        take_over_this_pc = ReadThisPcOpen(ExePath());
+        integration_residual = ReadIntegrationResidual();
+        integration_incomplete = ReadIntegrationIncomplete();
+        MigrateIntegration();
+        const std::wstring exe = ExePath();
+        if (persist && win_e_agent::Enabled(exe)) win_e_agent::EnsureRunning(exe);
         return false;
     }
     std::wstring json;
-    if (ReadUtf8File(dir + L"\\app.json", json) && !json.empty()) {
-        had_file = true;
-        FromJson(json);
+    const std::wstring file = dir + L"\\app.json";
+    const DWORD attributes = GetFileAttributesW(file.c_str());
+    const DWORD attribute_error = attributes == INVALID_FILE_ATTRIBUTES ? GetLastError() : ERROR_SUCCESS;
+    const bool missing = attributes == INVALID_FILE_ATTRIBUTES &&
+        (attribute_error == ERROR_FILE_NOT_FOUND || attribute_error == ERROR_PATH_NOT_FOUND);
+    if (!missing && (!ReadUtf8File(file, json) || !FromJson(json))) {
+        load_failed = true;
+        return false;
     }
+    load_failed = false;
+    had_file = !missing;
     launch_on_startup = ReadLaunchOnStartup();
     open_folders_in_pulse = ReadFolderOpen();
     take_over_win_e = ReadWinE();
-    if (persist) {
-        const std::wstring exe = ExePath();
-        const std::wstring legacy_command = std::wstring(kWinEVerbKey) + L"\\command";
-        if (FolderOpenCommandIsOurs(ReadRegString(legacy_command, nullptr), exe))
-            ApplyWinE(true);
-        else if (take_over_win_e) win_e_agent::EnsureRunning(exe);
-    }
-    // Repair older installs that wrote open\command but left shell default as none.
-    if (persist && open_folders_in_pulse)
-        ApplyFolderOpen(true);
+    // Older builds registered the Run command without --startup.
+    if (persist && launch_on_startup && StartupCommandNeedsRepair(ReadRunCommand(), ExePath()))
+        ApplyLaunchOnStartup(true);
+    take_over_this_pc = ReadThisPcOpen(ExePath());
+    integration_residual = ReadIntegrationResidual();
+    integration_incomplete = ReadIntegrationIncomplete();
+    MigrateIntegration();
+    const std::wstring exe = ExePath();
+    if (persist && win_e_agent::Enabled(exe)) win_e_agent::EnsureRunning(exe);
     return true;
 }
 
 bool AppPrefs::Save() const {
     if (!persist) return true;
+    if (load_failed) return false;
     const std::wstring dir = GetPulseDataDir();
     if (dir.empty()) return false;
     return WriteUtf8FileAtomic(dir + L"\\app.json", ToJson());

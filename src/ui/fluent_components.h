@@ -39,7 +39,6 @@ enum class MenuPictogram {
     LayoutFour,
 };
 
-inline constexpr wchar_t kOmnibarHintBadge[] = L"\u547D\u4EE4";
 inline constexpr wchar_t kOmnibarHintKey[] = L"Ctrl+K";
 
 struct MotionSpec {
@@ -68,6 +67,8 @@ struct ButtonSpec {
     bool drop_down = false;
     bool bordered = true;
     bool skip_glyph = false;
+    // Drop-down chevron turn, 0..1 = 0..180 degrees (its menu opening).
+    float chevron_turn = 0.0f;
 };
 
 struct TextFieldSpec {
@@ -421,9 +422,15 @@ public:
     void DrawSidebarSectionHeader(const SidebarSectionHeaderSpec& spec);
     // Leading-icon slot of a section header (valid when its glyph is set).
     D2D1_RECT_F SidebarSectionHeaderIconRect(const D2D1_RECT_F& bounds) const;
+    // Icon + title of a section header: the part that navigates on a navigable
+    // section (#80). Stops short of the add button and the chevron.
+    D2D1_RECT_F SidebarSectionHeaderTitleRect(const D2D1_RECT_F& bounds,
+                                              std::wstring_view text, bool has_icon) const;
     D2D1_RECT_F SidebarItemIconRect(const D2D1_RECT_F& bounds, bool status_dot) const;
     D2D1_RECT_F DriveSidebarItemIconRect(const D2D1_RECT_F& bounds) const;
     void DrawDriveSidebarItem(const DriveSidebarItemSpec& spec);
+    // Drive usage track (sidebar drives, This PC tiles); 90% used turns danger.
+    void DrawCapacityBar(const D2D1_RECT_F& track, float capacity, D2D1_COLOR_F value_color);
     void DrawPaneHeader(const PaneHeaderSpec& spec);
     void DrawColumnHeader(const ColumnHeaderSpec& spec);
     void DrawFileRowContent(const FileRowContentSpec& spec);

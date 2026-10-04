@@ -1,0 +1,35 @@
+{
+  "reference": "KaTeX",
+  "version": "0.16.22",
+  "freshMacrosPerProbe": true,
+  "results": [
+    {
+      "id": "matrix_cell_renewal",
+      "source": "\\newcommand{\\f}{a}\\begin{matrix}\\renewcommand{\\f}{b}\\f&1\\\\0&\\f\\end{matrix}+\\f",
+      "accepted": true,
+      "variables": [
+        "b",
+        "a",
+        "a"
+      ],
+      "mathml": "<span class=\"katex\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><semantics><mrow><mtable rowspacing=\"0.16em\" columnalign=\"center center\" columnspacing=\"1em\"><mtr><mtd><mstyle scriptlevel=\"0\" displaystyle=\"false\"><mi>b</mi></mstyle></mtd><mtd><mstyle scriptlevel=\"0\" displaystyle=\"false\"><mn>1</mn></mstyle></mtd></mtr><mtr><mtd><mstyle scriptlevel=\"0\" displaystyle=\"false\"><mn>0</mn></mstyle></mtd><mtd><mstyle scriptlevel=\"0\" displaystyle=\"false\"><mi>a</mi></mstyle></mtd></mtr></mtable><mo>+</mo><mi>a</mi></mrow><annotation encoding=\"application/x-tex\">\\newcommand{\\f}{a}\\begin{matrix}\\renewcommand{\\f}{b}\\f&amp;1\\\\0&amp;\\f\\end{matrix}+\\f</annotation></semantics></math></span>"
+    },
+    {
+      "id": "substack_row_renewal",
+      "source": "\\newcommand{\\f}{a}\\substack{\\renewcommand{\\f}{b}\\f\\\\\\f}+\\f",
+      "accepted": true,
+      "variables": [
+        "b",
+        "a",
+        "a"
+      ],
+      "mathml": "<span class=\"katex\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><semantics><mrow><mstyle scriptlevel=\"1\"><mtable rowspacing=\"0.1em\" columnalign=\"center\" columnspacing=\"1em\"><mtr><mtd><mstyle scriptlevel=\"1\" displaystyle=\"false\"><mi>b</mi></mstyle></mtd></mtr><mtr><mtd><mstyle scriptlevel=\"1\" displaystyle=\"false\"><mi>a</mi></mstyle></mtd></mtr></mtable></mstyle><mo>+</mo><mi>a</mi></mrow><annotation encoding=\"application/x-tex\">\\newcommand{\\f}{a}\\substack{\\renewcommand{\\f}{b}\\f\\\\\\f}+\\f</annotation></semantics></math></span>"
+    },
+    {
+      "id": "substack_row_new_definition",
+      "source": "\\substack{\\newcommand{\\f}{b}\\f\\\\\\f}",
+      "accepted": false,
+      "error": "KaTeX parse error: Undefined control sequence: \\f at position 33: …mand{\\f}{b}\\f\\\\\\̲f̲}"
+    }
+  ]
+}

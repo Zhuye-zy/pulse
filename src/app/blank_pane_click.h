@@ -26,4 +26,18 @@ inline bool IsBlankPaneBackClick(const BlankPaneClickRelease& click) {
         dy > -static_cast<int64_t>(click.drag_height) && dy < click.drag_height;
 }
 
+// AppPrefs::blank_click_action: what a double click on empty list space does.
+inline constexpr int kBlankClickOff = 0;
+inline constexpr int kBlankClickBack = 1;   // history first, the parent folder without it
+inline constexpr int kBlankClickUp = 2;     // always the parent folder (B站 #11)
+
+inline int NormalizeBlankClickAction(int action) {
+    return action == kBlankClickBack || action == kBlankClickUp ? action : kBlankClickOff;
+}
+
+// False means: go to the parent folder, if there is one.
+inline bool BlankClickGoesBack(int action, bool can_go_back) {
+    return action == kBlankClickBack && can_go_back;
+}
+
 } // namespace pulse::app

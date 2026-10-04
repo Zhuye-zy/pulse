@@ -9,8 +9,8 @@ std::wstring DefaultLocation(const AppPrefs& prefs) {
     return prefs.home_folder;
 }
 
-bool RestoresLastTabs(const AppPrefs& prefs) noexcept {
-    return prefs.startup_open != 1;
+bool RestoresLastTabs(const AppPrefs& prefs, bool restore_update_session) noexcept {
+    return restore_update_session || prefs.startup_open != 1;
 }
 
 std::wstring NewTabLocation(const AppPrefs& prefs, const std::wstring& current) {

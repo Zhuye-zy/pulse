@@ -1,5 +1,6 @@
 #include "app_internal.h"
 #include "app_input.h"
+#include "app_ops_ui.h"
 #include "../ui/ui_renderer_internal.h"
 #include <fstream>
 #include <filesystem>
@@ -404,7 +405,193 @@ int RunAdaptiveColumnsTest(AppState& s, const wchar_t* output) {
     return failures ? 1 : 0;
 }
 
+int RunSettingsIntegrationUiTest(AppState& s, const wchar_t* output) {
+    using H = ui::HitTestResult;
+    using I = l10n::StringId;
+    std::ofstream log{std::filesystem::path(output)};
+    int failures = 0;
+    auto check = [&](bool ok, const char* label) {
+        log << (ok ? "[PASS] " : "[FAIL] ") << label << '\n';
+        if (!ok) ++failures;
+    };
+    const auto language = l10n::preference();
+    const float original_scale = s.scale;
+    const int original_width = s.compositor.Width(), original_height = s.compositor.Height();
+    ui::fluent::Painter painter(&s.compositor);
+    bool labels = true, visible = true, separate = true, scope_hits = true, pill_fits = true;
+    bool action_hits = true, captions = true, chips = true, bar_fits = true, hints = true, search = true;
+    auto nonempty = [](D2D1_RECT_F r) { return r.right > r.left && r.bottom > r.top; };
+    auto inside = [](D2D1_RECT_F inner, D2D1_RECT_F outer) {
+        return inner.left >= outer.left-0.5f && inner.right <= outer.right+0.5f &&
+            inner.top >= outer.top-0.5f && inner.bottom <= outer.bottom+0.5f;
+    };
+    for (const auto* locale : {L"zh-CN", L"zh-TW", L"en-US"}) {
+        l10n::SetLanguage(locale);
+        painter.InvalidateTypography();
+        for (int id = IDS_SETTINGS_INTEGRATION; id <= IDS_INTEGRATION_REAPPLY; ++id) {
+            const bool found = !l10n::Get(static_cast<I>(id)).empty();
+            if (!found) log << "Missing integration resource: locale=" <<
+                (std::wstring(locale)==L"zh-CN" ? "zh-CN" : std::wstring(locale)==L"zh-TW" ? "zh-TW" : "en-US") <<
+                " id=" << id << '\n';
+            labels &= found;
+        }
+        for (I id : {I::SettingsIntegration, I::SettingsWinE}) {
+            const auto& query = l10n::Get(id);
+            const bool found = !query.empty() && TestSettingsFilter(query, id);
+            if (!found) log << "Missing integration search destination: locale=" <<
+                (std::wstring(locale)==L"zh-CN" ? "zh-CN" : std::wstring(locale)==L"zh-TW" ? "zh-TW" : "en-US") <<
+                " id=" << static_cast<int>(id) << '\n';
+            search &= found;
+        }
+        for (float scale : {1.0f, 1.5f, 2.0f}) {
+            s.compositor.RecreateTextFormats(scale);
+            s.renderer.SetScale(scale);
+            painter.SetScale(scale);
+            for (float width : {620.0f, 760.0f, 1280.0f}) {
+                const auto window = D2D1::RectF(0, 0, width*scale, 1000*scale);
+                // Variant 4 is the master switch on with nothing selected.
+                for (int state = 0; state < 5; ++state) {
+                    auto vm = BuildVm(s, false);
+                    vm.settings_open = true; vm.settings_page = 0; vm.settings_scroll = 0;
+                    vm.settings_expanded = 0;
+                    vm.settings_integration_state = state == 4 ? 0 : state;
+                    vm.settings_integration_enabled = state == 1 || state == 2 || state == 4;
+                    vm.settings_integration_folders = vm.settings_integration_win_e = state != 4;
+                    vm.settings_integration_this_pc = vm.settings_integration_experimental = state != 4;
+                    vm.settings_integration_can_retry = state == 2 || state == 3;
+                    vm.settings_integration_can_restore = state != 0 && state != 4;
+                    vm.settings_launch_on_startup = vm.settings_keep_running = false;
+                    vm.settings_integration_summary = state == 3
+                        ? l10n::Get(I::IntegrationMasterDesc) + L" " + l10n::Get(I::IntegrationExperimentalDesc)
+                        : std::wstring{};
+                    auto hit = [&](D2D1_RECT_F r) {
+                        auto shown = vm;
+                        shown.settings_scroll = r.top - s.renderer.TitleBarHeight() - 20*scale;
+                        return s.renderer.HitTest(shown, window, (r.left+r.right)/2,
+                            (r.top+r.bottom)/2 - shown.settings_scroll);
+                    };
+                    auto is_action = [&](D2D1_RECT_F r, int action) {
+                        const auto h = hit(r); return h.region == H::SettingsIntegration && h.index == action;
+                    };
+                    const auto l = ui::MakeSettingsLayout(vm, window, scale, s.renderer.TitleBarHeight(), 28*scale, &painter);
+                    const D2D1_RECT_F rows[] = {l.startup_row[2], l.win_e_row, l.this_pc_row, l.explorer_windows_row};
+                    const I descriptions[] = {I::IntegrationFoldersDesc, I::SettingsWinEDesc,
+                        I::SettingsThisPcDesc, I::IntegrationExperimentalDesc};
+                    separate &= l.integration_section.bottom <= l.integration_card.top &&
+                        l.integration_card.bottom <= l.section[1].top &&
+                        l.group[1].top == l.startup_row[0].top && l.default_manager_row.top == l.integration_card.top;
+                    action_hits &= is_action(l.default_manager_row, 0) && !nonempty(l.disclosure[3]);
+                    // Master row: the pill never collides with the switch and the description fits.
+                    const auto m = l.default_manager_row;
+                    const auto badge = l.integration_badge;
+                    const bool stacked = badge.top >= m.top+35*scale;
+                    const float master_h = painter.MeasureWrappedCaptionHeight(l10n::Get(I::IntegrationMasterDesc),
+                        l.integration_text_right-m.left-54*scale);
+                    pill_fits &= nonempty(badge) && inside(badge, m) && badge.right <= m.right-60*scale+0.5f &&
+                        (stacked || badge.left >= l.integration_text_right) &&
+                        m.top+35*scale+master_h <= (stacked ? badge.top : m.bottom-12*scale)+0.5f;
+                    for (int i = 0; i < 4; ++i) {
+                        visible &= nonempty(rows[i]) && inside(rows[i], l.integration_card);
+                        scope_hits &= is_action(rows[i], i+1);
+                        const float text_left = rows[i].left+112*scale;
+                        const float height = painter.MeasureWrappedCaptionHeight(l10n::Get(descriptions[i]),
+                            rows[i].right-16*scale-text_left);
+                        const float limit = i == 3 ? l.integration_chip[0].top-8*scale : rows[i].bottom-12*scale;
+                        captions &= rows[i].top+31*scale+height <= limit+0.5f;
+                    }
+                    const auto& experimental = l.explorer_windows_row;
+                    for (const auto& chip : l.integration_chip)
+                        chips &= nonempty(chip) && inside(chip, D2D1::RectF(experimental.left+112*scale,
+                            experimental.top, experimental.right-16*scale, experimental.bottom-12*scale+0.5f));
+                    visible &= l.integration_list_head.top >= m.bottom && l.integration_list_head.bottom <= rows[0].top;
+                    const bool problem = state == 2 || state == 3;
+                    action_hits &= is_action(l.integration_retry, 5) == problem &&
+                        is_action(l.integration_restore, 6) == problem;
+                    if (problem) {
+                        const auto bar = l.integration_bar;
+                        const auto message = state == 3 ? vm.settings_integration_summary : l10n::Get(I::IntegrationDriftDesc);
+                        const float msg_h = painter.MeasureWrappedCaptionHeight(message, bar.right-bar.left-60*scale);
+                        const auto retry = l.integration_retry, restore = l.integration_restore;
+                        bar_fits &= inside(bar, l.integration_card) && bar.top >= m.bottom && bar.bottom <= l.integration_list_head.top &&
+                            bar.top+32*scale+msg_h <= (std::min)(retry.top, restore.top)+0.5f &&
+                            inside(retry, bar) && inside(restore, bar) &&
+                            (retry.right <= restore.left || retry.bottom <= restore.top);
+                    } else {
+                        bar_fits &= !nonempty(l.integration_bar) && !nonempty(l.integration_retry) && !nonempty(l.integration_restore);
+                    }
+                    const auto hint = l10n::Get(!vm.settings_integration_enabled ? I::IntegrationInactiveHint
+                        : state == 4 ? I::IntegrationNoneHint : I::IntegrationRunningHint);
+                    const auto h = l.integration_hint;
+                    hints &= nonempty(h) && h.top >= experimental.bottom && h.bottom <= l.integration_card.bottom &&
+                        h.top+4*scale+painter.MeasureWrappedCaptionHeight(hint, h.right-16*scale-(h.left+78*scale)) <= h.bottom+0.5f;
+                    if (state == 1) {
+                        // Every background prerequisite met: no hint row at all.
+                        auto ready = vm; ready.settings_launch_on_startup = ready.settings_keep_running = true;
+                        const auto rl = ui::MakeSettingsLayout(ready, window, scale, s.renderer.TitleBarHeight(), 28*scale, &painter);
+                        hints &= !nonempty(rl.integration_hint) && rl.integration_card.bottom < l.integration_card.bottom;
+                    }
+                }
+            }
+        }
+    }
+    check(labels, "integration resources exist in all three languages");
+    check(search, "nonempty localized integration queries find their search destinations");
+    check(separate, "integration owns a titled card before startup settings");
+    check(visible, "all four choices stay visible without expanding");
+    check(scope_hits, "all four choices remain editable with the master off at every width and DPI");
+    check(action_hits, "master hits always; retry and restore hit only for drift or failure");
+    check(pill_fits, "status pill fits beside or below the master text without touching the switch");
+    check(captions && chips, "wrapped descriptions and experimental chips fit narrow and high-DPI layouts");
+    check(bar_fits, "problem bar and its actions fit; healthy states have no bar or action targets");
+    check(hints, "hint row appears only when a next step applies and its text fits");
+    // Render fixture view models only: never call integration actions or change registry/preferences.
+    const auto base = std::filesystem::path(output).parent_path();
+    for (const auto* locale : {L"zh-CN", L"zh-TW", L"en-US"}) {
+        l10n::SetLanguage(locale); painter.InvalidateTypography();
+        s.compositor.RecreateTextFormats(1.0f); s.renderer.SetScale(1.0f); painter.SetScale(1.0f);
+        for (int state = 0; state < 5; ++state) {
+            const bool narrow = state == 2 || state == 3;
+            const int width = narrow ? 620 : 1280, height = 1100;
+            s.compositor.Resize(width, height);
+            auto vm = BuildVm(s, false);
+            vm.settings_open = true; vm.settings_page = 0; vm.settings_scroll = 0;
+            vm.dark = state == 1 || state == 3; vm.window_effect = ui::WindowEffect::None;
+            vm.background_image.clear();
+            vm.backdrop_enabled = false; vm.wallpaper_look = 0; vm.wallpaper_blur = 0;
+            vm.settings_expanded = 0;
+            vm.settings_integration_state = state == 4 ? 0 : state;
+            vm.settings_integration_enabled = state == 1 || state == 2 || state == 4;
+            vm.settings_integration_folders = vm.settings_integration_win_e = state != 4;
+            vm.settings_integration_this_pc = state != 4;
+            vm.settings_integration_experimental = state == 1 || state == 3;
+            vm.settings_launch_on_startup = state == 1; vm.settings_keep_running = false;
+            vm.settings_integration_can_restore = state != 0 && state != 4;
+            vm.settings_integration_can_retry = state == 2 || state == 3;
+            vm.settings_integration_summary = state == 3 ? std::wstring(l10n::Pick(
+                L"没能设置：Win + E。可能被安全软件拦截，可以重试。",
+                L"Could not apply: Win + E. Security software may have blocked it; try again."))
+                : state == 2 ? l10n::Get(I::IntegrationDriftDesc) : std::wstring{};
+            const auto window = D2D1::RectF(0, 0, static_cast<float>(width), static_cast<float>(height));
+            const auto l = ui::MakeSettingsLayout(vm, window, 1, s.renderer.TitleBarHeight(), 28, &painter);
+            vm.settings_scroll = l.integration_section.top-l.content.top-12;
+            auto* dc = s.compositor.Dc();
+            dc->BeginDraw();
+            s.renderer.Render(vm, window, ui::MakeTheme(vm.dark, s.accentColor));
+            check(SUCCEEDED(dc->EndDraw()), "integration fixture renders");
+            const auto name = L"integration-" + std::wstring(locale) + L"-" + std::to_wstring(state) + L".png";
+            check(s.compositor.SaveSnapshot((base/name).c_str()), "integration fixture screenshot captured");
+        }
+    }
+    l10n::SetLanguage(l10n::LanguageId(language));
+    s.compositor.Resize(original_width, original_height);
+    s.compositor.RecreateTextFormats(original_scale); s.renderer.SetScale(original_scale);
+    log << "failures=" << failures << std::endl;
+    return failures ? 1 : 0;
+}
+
 int RunSettingsFlowTest(AppState& s,const wchar_t* output) {
+    if (GetEnvironmentVariableW(L"PULSE_TEST_SETTINGS_INTEGRATION", nullptr, 0))
+        return RunSettingsIntegrationUiTest(s, output);
     if (GetEnvironmentVariableW(L"PULSE_TEST_ADAPTIVE_COLUMNS", nullptr, 0))
         return RunAdaptiveColumnsTest(s, output);
     if (GetEnvironmentVariableW(L"PULSE_TEST_SEARCH_COLUMNS", nullptr, 0))
@@ -479,7 +666,15 @@ int RunSettingsFlowTest(AppState& s,const wchar_t* output) {
                     const auto density_layout=ui::MakeSettingsLayout(scrolled,window,scale,s.renderer.TitleBarHeight(),28*scale,&painter);
                     const auto density=density_layout.density_row[2];
                     check(s.renderer.HitTest(scrolled,window,(density.left+density.right)/2,(density.top+density.bottom)/2).region==H::SettingsDensity,"density segments remain reachable after scrolling into view");
-                    check(layout.wallpaper_card.bottom==0 && layout.startup_row[2].bottom==0,"collapsed advanced settings have no invisible hit targets");
+                    check(layout.wallpaper_card.bottom==0,"collapsed advanced settings have no invisible hit targets");
+                    check(layout.startup_row[2].bottom>layout.startup_row[2].top && layout.explorer_windows_row.bottom>layout.explorer_windows_row.top,"default file manager choices are visible without expanding");
+                    {
+                        const auto m=layout.default_manager_row;const auto mh=hit(m);
+                        check(mh.region==H::SettingsIntegration && mh.index==0 &&
+                              m.top==layout.integration_card.top && layout.integration_card.bottom<=layout.section[1].top &&
+                              layout.group[1].top==layout.startup_row[0].top,
+                              "integration master switch lives in its own card before startup settings");
+                    }
                     for(const auto* locale:{L"zh-CN",L"en-US"}) {
                         l10n::SetLanguage(locale);bool fits=true;
                         const I labels[]={I::SettingsDensityCompact,I::SettingsDensityStandard,I::SettingsDensityRoomy,I::SettingsTraySmall,I::SettingsTrayStandard,I::SettingsTrayLarge};
@@ -537,6 +732,44 @@ int RunSettingsFlowTest(AppState& s,const wchar_t* output) {
     s.settings.SetScroll(layout().density_card.top-layout().content.top,
         s.renderer.SettingsMaxScroll(BuildVm(s,false),window.right,window.bottom));
     click(layout().density_row[0]);check(s.appPrefs.row_height==28,"mouse click changes density through existing controller");
+    // Layout rectangles are scroll-relative: measure from the top so the target does not depend on the density step.
+    s.settings.SetScroll(0.0f,0.0f);
+    s.settings.SetScroll(layout().close_last_tab_row.top-layout().content.top,
+        s.renderer.SettingsMaxScroll(BuildVm(s,false),window.right,window.bottom));
+    {
+        const auto tab_layout=layout();
+        check(tab_layout.close_last_tab_row.top>=tab_layout.new_tab_open_card.bottom &&
+              tab_layout.close_last_tab_row.bottom<=tab_layout.group[1].bottom,
+              "close-with-last-tab row sits in the startup and close card");
+        const bool was=s.appPrefs.close_window_with_last_tab;
+        click(tab_layout.close_last_tab_row);
+        const bool flipped=s.appPrefs.close_window_with_last_tab!=was;
+        click(layout().close_last_tab_row);
+        check(flipped && s.appPrefs.close_window_with_last_tab==was,
+              "mouse click toggles closing the window with the last tab");
+    }
+    s.settings.SetScroll(0.0f,0.0f);
+    s.settings.SetScroll(layout().confirm_delete_row.top-layout().content.top,
+        s.renderer.SettingsMaxScroll(BuildVm(s,false),window.right,window.bottom));
+    {
+        const auto list_layout=layout();
+        check(list_layout.confirm_delete_row.top>=list_layout.folder_sort_card.bottom &&
+              list_layout.confirm_delete_row.bottom<=list_layout.group[2].bottom,
+              "confirm-before-delete row sits in the file list card");
+        const bool was=s.appPrefs.confirm_recycle_delete;
+        click(list_layout.confirm_delete_row);
+        const bool flipped=s.appPrefs.confirm_recycle_delete!=was;
+        click(layout().confirm_delete_row);
+        check(flipped && s.appPrefs.confirm_recycle_delete==was,
+              "mouse click toggles confirming before deleting");
+        const auto one=BuildRecycleDeleteConfirm({L"C:\\fx\\a.txt"});
+        const auto many=BuildRecycleDeleteConfirm({L"C:\\fx\\a.txt",L"C:\\fx\\b.txt",L"C:\\fx\\c.txt"});
+        check(!one.danger && one.items.size()==1 &&
+              one.message==l10n::Get(l10n::StringId::RecycleConfirmOne) &&
+              many.items.size()==3 && many.message.find(L"3")!=std::wstring::npos &&
+              !many.confirm_text.empty() && !many.danger,
+              "recycle delete confirmation lists the items without the danger style");
+    }
     s.settings.SetScroll(0,0);
     auto vm=BuildVm(s,false);
     const auto collapsed_max=s.renderer.SettingsMaxScroll(vm,window.right,window.bottom);

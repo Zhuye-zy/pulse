@@ -42,6 +42,8 @@ DWORD WINAPI ShellRegistryWatch(LPVOID param);
 void StartShellRegistryWatch(HWND hwnd);
 void StopShellRegistryWatch();
 void SeedShellVerbCache(AppState& s);
+// WM_SHELL_VERB_SEED: merges the parsed machine cache unless a newer seed started.
+void ApplyShellVerbSeed(AppState& s, ShellVerbSeed& seed);
 void StartCtxQuery(AppState& s, std::vector<std::wstring> paths,
                           bool background, const std::wstring& ext);
 void MaybePrefetchHoverCtxMenu(AppState& s);
@@ -67,6 +69,8 @@ void SetViewMode(AppState& s, ui::ViewMode mode);
 // "Apply to all folders" (#31) for the active real folder. Returns true when
 // applied; confirm=false skips the dialog (self tests).
 bool ApplyViewToAllFolders(AppState& s, bool confirm = true);
+// Group menu / group picker: `group_by` becomes every real folder's grouping (#75).
+bool ApplyGroupToAllFolders(AppState& s, int group_by, bool confirm = true);
 void ShowViewDropdown(AppState& s, int pane_index);
 void ShowSortDropdown(AppState& s);
 // Toolbar "Group" button: the group-by choices on their own.
@@ -85,11 +89,14 @@ void ShowSidebarSectionsMenu(AppState& s, POINT screen_pt);
 // Menu for one section (header or empty space inside it): toggle its built-in
 // quick-access links, fold it, or hide it. Both take a SidebarSectionId value.
 void ShowSidebarSectionMenu(AppState& s, int section, POINT screen_pt);
+// Right-click on a OneDrive row (#80): the folder commands plus "hide OneDrive".
+void ShowCloudPlaceMenu(AppState& s, const std::wstring& path, POINT screen_pt);
 void ToggleSidebarSection(AppState& s, int group);
 void SetEverySidebarSectionCollapsed(AppState& s, bool collapsed);
 void ApplyAppWindowChrome(AppState& s);
-bool PickImageFile(HWND owner, std::wstring& path);
-bool PickFolder(HWND owner, std::wstring& path, const wchar_t* title);
+// Pulse's own pickers (ui/folder_picker_dialog), owned by the main window.
+bool PickImageFile(AppState& s, std::wstring& path);
+bool PickFolder(AppState& s, std::wstring& path, const wchar_t* title);
 D2D1_COLOR_F ResolveAccentColor(const app::AppPrefs& prefs, bool dark = false);
 void ApplyAccentFromPrefs(AppState& s, bool snap_picker);
 bool SelectedQuickPreviewItem(AppState& s, ui::QuickPreviewItem& item);

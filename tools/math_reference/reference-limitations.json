@@ -1,0 +1,14 @@
+{
+  "macro_optional_root": {
+    "source": "\\newcommand{\\pulseRoot}[2][2]{\\sqrt[#1]{#2}}\\pulseRoot{x^2}+\\pulseRoot[3]{y^3}=x+y",
+    "expectedAcceptance": false,
+    "reason": "Pinned KaTeX 0.16.22 does not implement the optional first-argument default in newcommand. The original input remains rejected in the recorded reference output; native support is a separate required contract.",
+    "upstreamSource": "https://github.com/KaTeX/KaTeX/blob/v0.16.22/src/macros.js#L148"
+  },
+  "macro_empty_optional_default": {
+    "source": "\\newcommand{\\pulseSign}[2][]{#1#2}\\pulseSign{x}+\\pulseSign[-]{y}=x-y",
+    "expectedAcceptance": false,
+    "reason": "Pinned KaTeX 0.16.22 does not implement the optional first-argument default in newcommand, including an empty default. This is not relabeled as invalid native input.",
+    "upstreamSource": "https://github.com/KaTeX/KaTeX/blob/v0.16.22/src/macros.js#L148"
+  }
+}

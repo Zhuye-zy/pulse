@@ -73,7 +73,9 @@ void RestoreHistoryOrigin(Tab& tab, const std::optional<std::wstring>& origin) {
 
 void Tab::NavigateTo(const std::wstring& path) {
     ++view_generation;
-    if (!current_path.empty()) {
+    // This PC is the empty path, yet still a place to come back to; only
+    // reopening This PC from This PC adds no history entry.
+    if (!current_path.empty() || !path.empty()) {
         AlignHistoryOrigins(back_stack, back_search_origins);
         back_stack.push(current_path);
         back_search_origins.push(CurrentSearchOrigin(*this));
@@ -171,7 +173,31 @@ void Tab::SetShowProtectedOsFiles(bool show) {
     ++view_generation;
 }
 
+void Tab::RememberContentSelection() {
+    if (!content_results) return;
+    content_selected_paths.clear();
+    // Keep selection capture bounded by the display cache; unresolved selections
+    // are cancelled on a later re-order rather than naming different files.
+    if (SelectedCount() > index::ContentResultStore::kCachePages * index::ContentResultStore::kPageSize) return;
+    const auto order = content_results->OrderRevision();
+    if (order != content_order_revision) return;
+    for (int selected_row : SelectedIndices()) {
+        index::ContentResultStore::Row row;
+        if (!content_results->Get(static_cast<size_t>(selected_row), row)) { content_selected_paths.clear(); return; }
+        content_selected_paths.push_back(row.entry.full_path);
+        if (selected_row == selected_index) content_focus_path = row.entry.full_path;
+    }
+    if (order != content_results->OrderRevision()) content_selected_paths.clear();
+}
+namespace {
+struct RememberSelection {
+    Tab& tab;
+    ~RememberSelection() { tab.RememberContentSelection(); }
+};
+}
+
 void Tab::ClearSelection() {
+    RememberSelection remember{*this};
     ++selection_revision;
     selected_index = -1;
     selection_anchor = -1;
@@ -194,6 +220,7 @@ void Tab::MaterializeSelection() {
 }
 
 void Tab::SelectOnly(int index) {
+    RememberSelection remember{*this};
     ++selection_revision;
     selected.clear();
     all_selected = false;
@@ -209,6 +236,7 @@ void Tab::SelectOnly(int index) {
 }
 
 void Tab::ToggleSelect(int index) {
+    RememberSelection remember{*this};
     ++selection_revision;
     const int n = CountBound();
     if (index < 0 || index >= n || !EntryVisible(index)) return;
@@ -225,6 +253,7 @@ void Tab::ToggleSelect(int index) {
 }
 
 void Tab::SelectRange(int from, int to) {
+    RememberSelection remember{*this};
     ++selection_revision;
     const int n = CountBound();
     if (n <= 0) {
@@ -244,6 +273,7 @@ void Tab::SelectRange(int from, int to) {
 }
 
 void Tab::SelectAll() {
+    RememberSelection remember{*this};
     ++selection_revision;
     if (!content_results && !ShowsEveryEntry()) {
         std::vector<int> visible;
@@ -263,6 +293,7 @@ void Tab::SelectAll() {
 }
 
 void Tab::SelectIndices(const std::vector<int>& indices) {
+    RememberSelection remember{*this};
     ++selection_revision;
     const int n = CountBound();
     if (n <= 0 || indices.empty()) {
@@ -291,6 +322,7 @@ void Tab::SelectIndices(const std::vector<int>& indices) {
 }
 
 void Tab::InvertIndices(const std::vector<int>& universe) {
+    RememberSelection remember{*this};
     ++selection_revision;
     const int n = CountBound();
     if (n <= 0) {
@@ -1165,8 +1197,9 @@ SidebarModel BuildSidebarModel(const fs::RecycleBinInfo* recycle) {
     desktop.badge_rgb = 0x0078D4;
     desktop.builtin = static_cast<int>(BuiltinQuickAccess::Desktop);
     m.quick_access.push_back(std::move(desktop));
+    // Explorer shows the localized name ("下载"), not the folder name on disk.
     SidebarEntry downloads = MakeKnownEntry(FOLDERID_Downloads, L"\xE896", L"Downloads",
-        ui::HexColor(0xC084FC), L"Downloads");
+        ui::HexColor(0xC084FC), l10n::Get(l10n::StringId::Downloads).c_str());
     downloads.builtin = static_cast<int>(BuiltinQuickAccess::Downloads);
     m.quick_access.push_back(std::move(downloads));
     // OneDrive leads its own section: one row per signed-in account, the way
@@ -1177,6 +1210,21 @@ SidebarModel BuildSidebarModel(const fs::RecycleBinInfo* recycle) {
         SidebarEntry onedrive = MakeKnownEntry(FOLDERID_OneDrive, L"\xE753", L"OneDrive",
             ui::HexColor(0x2B88D8), L"OneDrive");
         if (!onedrive.path.empty()) m.cloud.push_back(std::move(onedrive));
+    }
+    // Isolated test instances only: a fixture folder stands in for a OneDrive
+    // account so the row menu (#80) can be exercised without a signed-in client.
+    wchar_t fake[MAX_PATH]{};
+    if (m.cloud.empty() && GetEnvironmentVariableW(L"PULSE_TEST_DATA_DIR", nullptr, 0) > 0) {
+        const DWORD n = GetEnvironmentVariableW(L"PULSE_TEST_ONEDRIVE", fake, MAX_PATH);
+        if (n > 0 && n < MAX_PATH) {
+            SidebarEntry onedrive;
+            onedrive.glyph = L"\xE753";
+            onedrive.fallback = L"OneDrive";
+            onedrive.color = ui::HexColor(0x2B88D8);
+            onedrive.label = L"OneDrive";
+            onedrive.path = fs::NormalizePath(fake);
+            m.cloud.push_back(std::move(onedrive));
+        }
     }
     SidebarEntry recycle_bin;
     recycle_bin.glyph = L"\xE75C";
@@ -1369,8 +1417,9 @@ static bool TagMatchesNeedle(const ColorTag& tag, int index, const std::wstring&
     if (needle.empty()) return true;
     if (ToLowerCopy(tag.name).find(needle) != std::wstring::npos) return true;
     static const wchar_t* kNicks[] = { L"红", L"橙", L"绿", L"青", L"紫", L"蓝", L"灰" };
-    if (index >= 0 && index < 7 && needle == kNicks[index]) return true;
-    if (index == 1 && needle == L"黄") return true;
+    static const wchar_t* kNicksHant[] = { L"紅", L"橙", L"綠", L"青", L"紫", L"藍", L"灰" };
+    if (index >= 0 && index < 7 && (needle == kNicks[index] || needle == kNicksHant[index])) return true;
+    if (index == 1 && (needle == L"黄" || needle == L"黃")) return true;
     return false;
 }
 
@@ -1464,6 +1513,8 @@ void FillPaneViewModel(ui::PaneViewModel& out, const Pane& pane, const PlacesCat
         ParsePulsePath(tab->current_path, nullptr, &rest);
         out.search_query = rest;
         out.is_content_search = SplitSearchQueryText(rest).content.present();
+        out.network_live_action = !out.is_content_search && !tab->network_live_root.empty() &&
+                                  !tab->banner_message.empty();
         // The breadcrumb shows where the search started, then one search segment.
         out.has_search_origin = true;
         if (tab->search_origin_valid) {
@@ -1948,6 +1999,7 @@ ui::WindowViewModel BuildWindowViewModel(const Pane& pane,
     savedSearches.icon_glyph = L"\xE721"; // search
     tags.icon_glyph = L"\xE8EC";          // tag
     drives.icon_glyph = L"\xE977";        // this PC
+    drives.navigable = true;             // the title opens This PC (#80)
     nets.icon_glyph = L"\xE968";          // network
 
     tags.header = l10n::Get(l10n::StringId::SidebarTags);

@@ -126,7 +126,7 @@ bool LooksBinary(const std::vector<uint8_t>& bytes) {
     return !bytes.empty() && controls * 20 > bytes.size();
 }
 
-bool DecodeText(const std::vector<uint8_t>& bytes, std::wstring& text,
+bool DecodeText(const std::vector<uint8_t>& bytes, std::wstring& text, bool& truncated,
                 ipc::PreviewTextEncoding* encoding = nullptr) {
     if (encoding) *encoding = ipc::PreviewTextEncoding::Utf8;
     if (bytes.empty()) { text.clear(); return true; }
@@ -149,7 +149,19 @@ bool DecodeText(const std::vector<uint8_t>& bytes, std::wstring& text,
             if (encoding) *encoding = ipc::PreviewTextEncoding::Utf8Bom;
         }
         const char* raw = reinterpret_cast<const char*>(bytes.data() + offset);
-        const int raw_size = static_cast<int>(bytes.size() - offset);
+        int raw_size = static_cast<int>(bytes.size() - offset);
+        if (truncated && raw_size > 0) {
+            // A byte budget may cut a valid UTF-8 character. Exclude only an
+            // incomplete final sequence; the remaining prefix still undergoes
+            // strict validation before choosing UTF-8 over the system encoding.
+            int lead = raw_size - 1;
+            while (lead > 0 && (static_cast<unsigned char>(raw[lead]) & 0xC0) == 0x80) --lead;
+            const auto c = static_cast<unsigned char>(raw[lead]);
+            const int width = c >= 0xC2 && c <= 0xDF ? 2 :
+                c >= 0xE0 && c <= 0xEF ? 3 : c >= 0xF0 && c <= 0xF4 ? 4 : 1;
+            if (raw_size - lead < width) raw_size = lead;
+        }
+        if (!raw_size) { text.clear(); return true; }
         int chars = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, raw, raw_size,
                                         nullptr, 0);
         UINT code_page = CP_UTF8;
@@ -168,7 +180,12 @@ bool DecodeText(const std::vector<uint8_t>& bytes, std::wstring& text,
         if (c < 0x20 && c != L'\r' && c != L'\n' && c != L'\t') c = L'\xFFFD';
     }
     constexpr size_t kMaxChars = 12000;
-    if (text.size() > kMaxChars) text.resize(kMaxChars);
+    if (text.size() > kMaxChars) {
+        text.resize(kMaxChars);
+        truncated = true;
+    }
+    if (truncated && !text.empty() && text.back() >= 0xD800 && text.back() <= 0xDBFF)
+        text.pop_back();
     return true;
 }
 
@@ -214,10 +231,10 @@ bool MakeTextOrHex(const std::wstring& path, DWORD attrs, ipc::PreviewContentKin
     if (!known_text && file_size > bytes.size()) {
         if (!ReadPrefix(path, 32u * 1024u, bytes, file_size)) return false;
     }
-    if (LooksBinary(bytes) || !DecodeText(bytes, text, encoding)) return false;
+    truncated = file_size > bytes.size();
+    if (LooksBinary(bytes) || !DecodeText(bytes, text, truncated, encoding)) return false;
     kind = ipc::PreviewContentKind::Text;
     bytes_read = static_cast<uint32_t>(bytes.size());
-    truncated = file_size > bytes.size();
     return true;
 }
 

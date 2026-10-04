@@ -27,6 +27,7 @@ public:
     size_t RawCount() const;
     bool SameContents(const ContentResultStore& other, HANDLE cancel) const;
     uint64_t Revision() const;
+    uint64_t OrderRevision() const;
     DWORD Error() const;
     bool Filtering() const;
     bool Sorting() const;
@@ -36,7 +37,8 @@ public:
     void SetFilter(Filter filter);
     void SetSort(ContentResultSort sort, bool descending);
     void Resolve(std::vector<int> indices, bool all, size_t count,
-                 std::function<void(Selection)> complete);
+                 std::function<void(Selection)> complete, uint64_t expected_order = UINT64_MAX);
+    void FindPaths(std::vector<std::wstring> paths, std::function<void(std::vector<int>)> complete);
     void FindPath(std::wstring path,std::function<void(int)> complete);
     void FindIdentity(uint64_t file_id,std::function<void(int)> complete);
     void Match(Filter filter,std::function<void(Selection)> complete);

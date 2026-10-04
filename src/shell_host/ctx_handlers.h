@@ -38,6 +38,9 @@ struct CtxHandlerSlot {
     UINT id_last = 0;
     std::wstring clsid;
     std::wstring name;
+    // Localized title obtained from the SendTo CLSID, used to isolate its
+    // submenu in the default Shell context menu (which has no canonical verb).
+    std::wstring send_to_title;
 };
 
 struct CtxBind {

@@ -1,5 +1,6 @@
 #include "update_installer.h"
 #include "update_transport.h"
+#include "../common/runtime_log.h"
 #include <bcrypt.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -57,7 +58,17 @@ DWORD UpdateInstallErrorFromExitCode(DWORD exit_code) {
     return ERROR_INSTALL_FAILURE;
 }
 
+std::wstring UpdateInstallParameters(std::wstring_view executable) {
+    const auto slash = executable.find_last_of(L"\\/");
+    if (slash == std::wstring_view::npos || slash == 0 ||
+        executable.find_first_of(L"\"\r\n") != std::wstring_view::npos) return {};
+    return L"/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PULSEUPDATE=1 /LOG /DIR=\"" +
+        std::wstring(executable.substr(0, slash)) + L"\"";
+}
+
 struct UpdateInstaller::State {
+    const uint64_t operation_id = diagnostics::runtime::NextId();
+    const ULONGLONG started = GetTickCount64();
     std::atomic<bool> cancelled{false};
     std::atomic<bool> downloading{true};
     std::atomic<bool> installing{false};
@@ -65,6 +76,10 @@ struct UpdateInstaller::State {
     UpdateProgress progress{UpdatePhase::Connecting};
     void SetPhase(UpdatePhase phase) {
         std::lock_guard<std::mutex> lock(mutex);
+        if (progress.phase != phase) {
+            diagnostics::runtime::Event("update_install_phase", {{"operation", operation_id},
+                {"phase", static_cast<uint64_t>(phase)}, {"elapsed_ms", GetTickCount64() - started}});
+        }
         progress.phase = phase;
     }
     bool has_result = false;
@@ -115,11 +130,17 @@ struct UpdateInstaller::State {
                     }, category, failure,
                     [&](std::wstring_view url, uint64_t maximum, const std::atomic<bool>& stop,
                         const std::function<bool(const void*, DWORD)>& consume, UpdateError& kind, DWORD& error) {
-                        return ReadUpdateResponseWithProgress(url, maximum, stop, consume, kind, error,
+                        const auto transfer_started = GetTickCount64();
+                        diagnostics::runtime::Event("update_download_start", {{"operation", operation_id}});
+                        const bool received_ok = ReadUpdateResponseWithProgress(url, maximum, stop, consume, kind, error,
                             [&](uint64_t received, uint64_t total) {
                                 std::lock_guard<std::mutex> lock(mutex);
                                 progress = {UpdatePhase::Downloading, received, total};
                             });
+                        diagnostics::runtime::Event("update_download_end", {{"operation", operation_id},
+                            {"ok", received_ok}, {"error", static_cast<uint64_t>(kind)}, {"code", error},
+                            {"elapsed_ms", GetTickCount64() - transfer_started}});
+                        return received_ok;
                     })) return failure;
             SetPhase(UpdatePhase::Verifying);
             if (!FlushFileBuffers(output.value)) return GetLastError();
@@ -133,7 +154,11 @@ struct UpdateInstaller::State {
         if (!GetFileInformationByHandleEx(guard.value, FileAttributeTagInfo, &attributes, sizeof(attributes)) ||
             (attributes.FileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)))
             return ERROR_INVALID_DATA;
-        return VerifyUpdateInstaller(guard.value, update.installer_sha256) ? ERROR_SUCCESS : ERROR_CRC;
+        const auto verify_started = GetTickCount64();
+        const DWORD verify_error = VerifyUpdateInstaller(guard.value, update.installer_sha256) ? ERROR_SUCCESS : ERROR_CRC;
+        diagnostics::runtime::Event("update_verify_end", {{"operation", operation_id},
+            {"code", verify_error}, {"elapsed_ms", GetTickCount64() - verify_started}});
+        return verify_error;
     }
 };
 
@@ -148,19 +173,26 @@ UpdateProgress UpdateInstaller::Progress() const {
 }
 
 bool UpdateInstaller::Start(const UpdateResult& update, HWND notify, UINT message) {
-    if (downloading() || installing() || !notify || !message || update.error != UpdateError::None ||
+    if (Progress().active() || !notify || !message || update.error != UpdateError::None ||
         !update.update_available || !update.download_page.starts_with(L"https://") ||
         update.installer_sha256.size() != 64) return false;
     Stop();
     auto state = std::make_shared<State>();
     state_ = state;
+    diagnostics::runtime::Event("update_install_start", {{"operation", state->operation_id}});
     try {
         std::thread([state, update, notify, message] {
             DWORD error = ERROR_GEN_FAILURE;
             try { error = state->Download(update); } catch (...) {}
+            diagnostics::runtime::Event("update_prepare_end", {{"operation", state->operation_id},
+                {"code", error}, {"cancelled", state->cancelled.load()},
+                {"elapsed_ms", GetTickCount64() - state->started}});
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
                 state->progress.phase = !error && !state->cancelled ? UpdatePhase::Ready : UpdatePhase::Idle;
+                diagnostics::runtime::Event("update_install_phase", {{"operation", state->operation_id},
+                    {"phase", static_cast<uint64_t>(state->progress.phase)},
+                    {"elapsed_ms", GetTickCount64() - state->started}});
                 state->error = error;
                 state->downloading = false;
                 state->has_result = true;
@@ -168,6 +200,7 @@ bool UpdateInstaller::Start(const UpdateResult& update, HWND notify, UINT messag
             if (!state->cancelled) PostMessageW(notify, message, 0, 0);
         }).detach();
     } catch (...) {
+        diagnostics::runtime::Event("update_download_thread_failed", {{"operation", state->operation_id}});
         Stop();
         return false;
     }
@@ -186,7 +219,22 @@ bool UpdateInstaller::TakeResult(DWORD& error) {
 bool UpdateInstaller::Launch(HWND owner, DWORD& error) {
     error = ERROR_INVALID_STATE;
     if (!state_ || state_->downloading || state_->installing || state_->error || state_->guard.value == INVALID_HANDLE_VALUE) return false;
+    std::wstring executable(32768, L'\0');
+    const DWORD size = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+    if (!size || size >= executable.size()) {
+        error = ERROR_BAD_PATHNAME;
+        diagnostics::runtime::Event("update_launch_path_failed", {{"operation", state_->operation_id}, {"code", error}});
+        return false;
+    }
+    executable.resize(size);
+    const std::wstring parameters = UpdateInstallParameters(executable);
+    if (parameters.empty()) {
+        error = ERROR_BAD_PATHNAME;
+        diagnostics::runtime::Event("update_launch_parameters_failed", {{"operation", state_->operation_id}, {"code", error}});
+        return false;
+    }
     state_->SetPhase(UpdatePhase::Launching);
+    const auto launch_started = GetTickCount64();
     SHELLEXECUTEINFOW execute{sizeof(execute)};
     execute.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
     execute.hwnd = owner;
@@ -194,29 +242,40 @@ bool UpdateInstaller::Launch(HWND owner, DWORD& error) {
     // token for post-install launch. Explicit runas makes Pulse elevated too.
     execute.lpVerb = L"open";
     execute.lpFile = state_->file.c_str();
-    execute.lpParameters = L"/SP- /NORESTART /LOG";
-    execute.nShow = SW_SHOWNORMAL;
+    execute.lpParameters = parameters.c_str();
+    execute.nShow = SW_HIDE;
     if (!ShellExecuteExW(&execute)) {
         error = GetLastError();
+        diagnostics::runtime::Event("update_launch_end", {{"operation", state_->operation_id},
+            {"code", error}, {"elapsed_ms", GetTickCount64() - launch_started}});
         state_->SetPhase(UpdatePhase::Idle);
         return false;
     }
+    diagnostics::runtime::Event("update_launch_end", {{"operation", state_->operation_id},
+        {"code", ERROR_SUCCESS}, {"has_process", execute.hProcess != nullptr},
+        {"elapsed_ms", GetTickCount64() - launch_started}});
     if (execute.hProcess) {
         auto state = state_;
         state->installing = true;
         state->SetPhase(UpdatePhase::Installing);
         try {
             std::thread([state, process = execute.hProcess] {
+                const auto install_started = GetTickCount64();
                 DWORD exit_code = 0;
                 DWORD failure = ERROR_SUCCESS;
+                bool has_exit_code = false;
                 if (WaitForSingleObject(process, INFINITE) != WAIT_OBJECT_0 ||
                     !GetExitCodeProcess(process, &exit_code)) {
                     failure = GetLastError();
                     if (!failure) failure = ERROR_GEN_FAILURE;
                 } else {
+                    has_exit_code = true;
                     failure = UpdateInstallErrorFromExitCode(exit_code);
                 }
                 CloseHandle(process);
+                diagnostics::runtime::Event("update_install_end", {{"operation", state->operation_id},
+                    {"code", failure}, {"exit_code", exit_code}, {"has_exit_code", has_exit_code},
+                    {"elapsed_ms", GetTickCount64() - install_started}});
                 {
                     std::lock_guard<std::mutex> lock(state->mutex);
                     state->progress.phase = UpdatePhase::Idle;
@@ -226,6 +285,7 @@ bool UpdateInstaller::Launch(HWND owner, DWORD& error) {
                 }
             }).detach();
         } catch (...) {
+            diagnostics::runtime::Event("update_install_monitor_failed", {{"operation", state->operation_id}});
             CloseHandle(execute.hProcess);
             state->installing = false;
             state->SetPhase(UpdatePhase::Idle);
@@ -233,6 +293,11 @@ bool UpdateInstaller::Launch(HWND owner, DWORD& error) {
     } else state_->SetPhase(UpdatePhase::Idle);
     error = ERROR_SUCCESS;
     return true;
+}
+
+void UpdateInstaller::WaitForOperations() {
+    if (state_ && !state_->downloading && !state_->installing && !state_->error &&
+        state_->guard.value != INVALID_HANDLE_VALUE) state_->SetPhase(UpdatePhase::WaitingOperations);
 }
 
 bool UpdateInstaller::TakeInstallResult(DWORD& error) {
@@ -245,7 +310,12 @@ bool UpdateInstaller::TakeInstallResult(DWORD& error) {
 }
 
 void UpdateInstaller::Stop() {
-    if (state_) state_->cancelled = true;
+    if (state_) {
+        diagnostics::runtime::Event("update_install_release", {{"operation", state_->operation_id},
+            {"downloading", state_->downloading.load()}, {"installing", state_->installing.load()},
+            {"elapsed_ms", GetTickCount64() - state_->started}});
+        state_->cancelled = true;
+    }
     state_.reset();
 }
 }

@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -126,5 +127,33 @@ private:
 
 SearchResult MergeSearchResults(const Query& query, SearchResult local,
                                 SearchResult network);
+
+// #74: name search in a network folder that no ready network root covers. The
+// local index never holds SMB paths and the network index only answers for
+// roots added in Settings, so such a scoped search found nothing while
+// Explorer walks the folder. These walk it live with the network index's
+// matching and ordering rules.
+struct LiveNetworkMatches {
+    std::vector<Hit> hits;  // walk order, at most kSearchPageCap
+    size_t total = 0;       // all matches, including past the cap
+    DWORD error = 0;        // the folder itself could not be listed
+    bool complete = false;  // the walk finished (was not cancelled)
+};
+// UNC paths and mapped network drives.
+bool IsNetworkFolderPath(const std::wstring& path);
+// True when `path` lies under a configured root; with require_ready only roots
+// whose index can answer a search right now count.
+bool NetworkRootsCover(const std::vector<NetworkRootInfo>& roots, const std::wstring& path,
+                       bool require_ready);
+// Lists `folder` recursively and appends the matches to `out` under
+// `out_mutex`. `progress` runs about every 250 ms while new matches arrive;
+// the walk stops when `cancelled` returns true.
+void LiveNetworkWalk(const std::wstring& folder, const std::wstring& needle, bool folders_only,
+                     LiveNetworkMatches& out, std::mutex& out_mutex,
+                     const std::function<bool()>& cancelled,
+                     const std::function<void()>& progress);
+// One provider answer (offset/limit applied) from the matches so far. The
+// caller holds the mutex guarding `matches`.
+SearchResult SelectLiveNetworkHits(const Query& query, const LiveNetworkMatches& matches);
 
 } // namespace pulse::index

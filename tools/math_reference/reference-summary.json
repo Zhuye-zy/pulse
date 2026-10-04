@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "engine": "KaTeX",
+  "version": "0.16.22",
+  "integrity": "sha512-XCHRdUw4lf3SKBaJe4EvgqIuWwkPSo9XoeO8GjQW94Bp7TWv9hNhzZjZ+OH9yf1UmLygb7DIT5GSFQiyt16zYg==",
+  "node": "v24.19.0",
+  "platform": "win32",
+  "corpusSha256": "fab865f2c960788b3911c03d880e527a06574431f4fefc8e006bea478892f8d1",
+  "options": {
+    "throwOnError": true,
+    "strict": "error",
+    "trust": false,
+    "maxExpand": 1000,
+    "maxSize": 100
+  },
+  "total": 132,
+  "accepted": 109,
+  "rejected": 23,
+  "referenceVerdictMismatches": [],
+  "nativeAcceptCases": 92,
+  "nativeFallbackCases": 19,
+  "invalidCases": 21,
+  "referenceLimitedCases": [
+    "macro_optional_root",
+    "macro_empty_optional_default"
+  ],
+  "formulaLocalMacroIsolation": {
+    "definitionCaseAccepted": true,
+    "followingUndefinedCaseRejected": true,
+    "freshMacrosPerCaseAndOutput": true
+  },
+  "galleryAssets": {
+    "localStylesheet": true,
+    "verifiedLocalFontFiles": 60,
+    "upstreamLicensePresent": true
+  },
+  "note": "Reference results only. Native acceptance and visual equivalence require separate checks."
+}

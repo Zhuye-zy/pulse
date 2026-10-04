@@ -1620,9 +1620,159 @@ bool NetworkIndex::TakeResult(uint32_t id, SearchResult& result) {
     return true;
 }
 
+bool IsNetworkFolderPath(const std::wstring& raw) {
+    std::wstring_view path(raw);
+    if (path.size() >= 8 && CompareStringOrdinal(path.data(), 8, L"\\\\?\\UNC\\", 8, TRUE) == CSTR_EQUAL)
+        return true;
+    if (path.starts_with(L"\\\\?\\") || path.starts_with(L"\\\\.\\")) path.remove_prefix(4);
+    else if (path.size() >= 3 && path[0] == L'\\' && path[1] == L'\\') return true;
+    if (path.size() >= 2 && path[1] == L':' && iswalpha(path[0])) {
+        const wchar_t root[4] = {path[0], L':', L'\\', 0};
+        return GetDriveTypeW(root) == DRIVE_REMOTE;
+    }
+    return false;
+}
+
+bool NetworkRootsCover(const std::vector<NetworkRootInfo>& roots, const std::wstring& path,
+                       bool require_ready) {
+    std::wstring_view value(path);
+    while (value.size() > 3 && value.back() == L'\\') value.remove_suffix(1);
+    for (const auto& root : roots) {
+        // A root still on its first crawl (or re-crawling) has no complete
+        // shard to answer from; the live walk stays correct meanwhile.
+        if (require_ready && (!root.online || root.building || root.indexed_items == 0)) continue;
+        if (!root.path.empty() && StartsWithPath(value, root.path)) return true;
+    }
+    return false;
+}
+
+void LiveNetworkWalk(const std::wstring& raw_folder, const std::wstring& needle, bool folders_only,
+                     LiveNetworkMatches& out, std::mutex& out_mutex,
+                     const std::function<bool()>& cancelled,
+                     const std::function<void()>& progress) {
+    std::wstring folder = raw_folder;
+    std::replace(folder.begin(), folder.end(), L'/', L'\\');
+    while (folder.size() > 3 && folder.back() == L'\\') folder.pop_back();
+    const CompiledQuery compiled = ParseQuery(needle);
+    std::vector<std::wstring> stack{folder};
+    ULONGLONG last_progress = GetTickCount64();
+    bool stopped = false;
+    bool first = true;
+    bool unreported = false;
+    while (!stack.empty()) {
+        if (cancelled && cancelled()) {
+            stopped = true;
+            break;
+        }
+        std::wstring directory = std::move(stack.back());
+        stack.pop_back();
+        const bool top = first;
+        first = false;
+        std::wstring pattern = LongPath(directory);
+        if (pattern.back() != L'\\') pattern += L'\\';
+        pattern += L'*';
+        WIN32_FIND_DATAW find{};
+        HANDLE handle = FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &find,
+                                         FindExSearchNameMatch, nullptr,
+                                         FIND_FIRST_EX_LARGE_FETCH);
+        if (handle == INVALID_HANDLE_VALUE && GetLastError() == ERROR_INVALID_PARAMETER) {
+            handle = FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &find,
+                                      FindExSearchNameMatch, nullptr, 0);
+        }
+        if (handle == INVALID_HANDLE_VALUE) {
+            // Unreadable subfolders are skipped like Explorer does; only the
+            // search scope itself failing is an error.
+            if (top) {
+                const DWORD error = GetLastError();
+                std::lock_guard<std::mutex> lock(out_mutex);
+                out.error = error ? error : ERROR_PATH_NOT_FOUND;
+            }
+            continue;
+        }
+        const std::wstring base = directory.back() == L'\\' ? directory : directory + L'\\';
+        std::vector<Hit> found;
+        do {
+            if (wcscmp(find.cFileName, L".") == 0 || wcscmp(find.cFileName, L"..") == 0)
+                continue;
+            const bool is_dir = (find.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+            std::wstring full = base + find.cFileName;
+            NetworkRecord record{};
+            record.flags = is_dir ? kRecordDirectory : 0;
+            record.size = is_dir ? 0
+                : (static_cast<uint64_t>(find.nFileSizeHigh) << 32) | find.nFileSizeLow;
+            record.mtime = FileTimeValue(find.ftLastWriteTime);
+            const std::wstring_view name(find.cFileName);
+            if (MatchNetworkRecord(record, full, name, compiled, folders_only))
+                found.push_back(Hit{full, std::wstring(name), is_dir, record.size, record.mtime});
+            if (is_dir && !(find.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+                stack.push_back(std::move(full));
+        } while (FindNextFileW(handle, &find));
+        FindClose(handle);
+        if (!found.empty()) {
+            std::lock_guard<std::mutex> lock(out_mutex);
+            out.total += found.size();
+            for (auto& hit : found) {
+                if (out.hits.size() >= kSearchPageCap) break;
+                out.hits.push_back(std::move(hit));
+            }
+            unreported = true;
+        }
+        const ULONGLONG now = GetTickCount64();
+        if (unreported && progress && now - last_progress >= 250) {
+            last_progress = now;
+            unreported = false;
+            progress();
+        }
+    }
+    std::lock_guard<std::mutex> lock(out_mutex);
+    out.complete = !stopped;
+}
+
+SearchResult SelectLiveNetworkHits(const Query& query, const LiveNetworkMatches& matches) {
+    SearchResult result;
+    result.total = matches.total;
+    result.error = matches.error;
+    const CompiledQuery compiled = ParseQuery(query.needle);
+    struct Ranked {
+        const Hit* hit = nullptr;
+        int score = 0;
+    };
+    std::vector<Ranked> order;
+    order.reserve(matches.hits.size());
+    for (const auto& hit : matches.hits) {
+        order.push_back({&hit, query.rank
+            ? RankName(hit.name.data(), static_cast<uint32_t>(hit.name.size()), hit.is_dir, compiled)
+            : 0});
+    }
+    if (query.rank || query.sort != ResultSort::Index) {
+        auto better = [&](const Ranked& a, const Ranked& b) {
+            if (query.rank) {
+                if (a.score != b.score) return a.score > b.score;
+                return CompareName(*a.hit, *b.hit) < 0;
+            }
+            return BetterHit(*a.hit, *b.hit, query, compiled);
+        };
+        const size_t wanted = query.offset > SIZE_MAX - query.limit
+            ? SIZE_MAX : query.offset + query.limit;
+        if (order.size() > wanted) {
+            std::partial_sort(order.begin(), order.begin() + static_cast<std::ptrdiff_t>(wanted),
+                              order.end(), better);
+            order.resize(wanted);
+        } else {
+            std::sort(order.begin(), order.end(), better);
+        }
+    }
+    const size_t begin = (std::min)(query.offset, order.size());
+    const size_t end = begin + (std::min)(query.limit, order.size() - begin);
+    result.hits.reserve(end - begin);
+    for (size_t i = begin; i < end; ++i) result.hits.push_back(*order[i].hit);
+    return result;
+}
+
 SearchResult MergeSearchResults(const Query& query, SearchResult local,
                                 SearchResult network) {
     SearchResult result;
+    result.error = local.error ? local.error : network.error;
     result.total = local.total + network.total;
     result.hits.reserve(local.hits.size() + network.hits.size());
     for (auto& hit : local.hits) result.hits.push_back(std::move(hit));

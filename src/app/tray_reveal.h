@@ -19,5 +19,8 @@ bool TakeFreshStart(AppState& s);
 void StartFreshAt(AppState& s, const std::wstring& path);
 // Lets TrayController::RestoreWindow start over before showing the window.
 void InstallTrayRevealHook(AppState& s);
+// Whether the notification-area icon should show (#57: always, only while
+// the window is closed to it, or never).
+bool WantsTrayIcon(const AppState& s, bool window_hidden);
 
 } // namespace pulse

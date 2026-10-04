@@ -1,5 +1,6 @@
 // index_delta.cpp — See index_delta.h.
 #include "index_delta.h"
+#include "../common/runtime_log.h"
 #include "index_config.h"
 #include "index_paths.h"
 #include "index_shard.h"
@@ -136,10 +137,11 @@ bool DeltaLog::Reset(uint64_t base_built) {
     return Open(path, base_built);
 }
 
-void DeltaLog::QueueAdd(int32_t parent, uint8_t flags, uint32_t mtime, uint64_t size,
+void DeltaLog::QueueAdd(int32_t idx, int32_t parent, uint8_t flags, uint32_t mtime, uint64_t size,
                         std::wstring_view name, uint64_t frn) {
     const uint16_t nlen = static_cast<uint16_t>((std::min)(name.size(), static_cast<size_t>(65535)));
     PutU8(static_cast<uint8_t>(DeltaOp::Add));
+    PutI32(idx);
     PutI32(parent);
     PutU8(flags);
     PutBytes(&mtime, 4);
@@ -200,10 +202,17 @@ bool DeltaLog::Replay(const std::wstring& path, uint64_t expected_built, ReplayF
     if (path.empty() || !fn) return true;
     HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
                            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return true;
+    if (h == INVALID_HANDLE_VALUE) {
+        const auto error = GetLastError();
+        if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND)
+            diagnostics::runtime::Event("index_wal_open_failed", {{"error", error}});
+        return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
+    }
     DiskDeltaHeader hdr{};
     if (!ReadAll(h, &hdr, sizeof(hdr)) || memcmp(hdr.magic, "PDLT", 4) != 0 ||
         hdr.ver != kDeltaVer || hdr.base_built != expected_built) {
+        diagnostics::runtime::Event("index_wal_header_rejected", {{"version", hdr.ver}, {"expected_version", kDeltaVer},
+            {"base_built", hdr.base_built}, {"expected_built", expected_built}});
         CloseHandle(h);
         return false;
     }
@@ -254,7 +263,7 @@ bool DeltaLog::Replay(const std::wstring& path, uint64_t expected_built, ReplayF
         std::wstring_view nm;
         if (op == DeltaOp::Add) {
             uint16_t nlen = 0;
-            if (!read_i32(parent) || !read_u8(flags) || !read_u32(mtime) || !read_u64(size) ||
+            if (!read_i32(idx) || !read_i32(parent) || !read_u8(flags) || !read_u32(mtime) || !read_u64(size) ||
                 !read_u16(nlen)) { ok = false; break; }
             name.resize(nlen);
             if (nlen) {
@@ -263,7 +272,7 @@ bool DeltaLog::Replay(const std::wstring& path, uint64_t expected_built, ReplayF
             }
             if (!read_u64(frn)) { ok = false; break; }
             nm = { name.data(), nlen };
-            fn(op, -1, parent, flags, 0, mtime, size, nm, frn, 0, 0);
+            fn(op, idx, parent, flags, 0, mtime, size, nm, frn, 0, 0);
         } else if (op == DeltaOp::Patch) {
             if (!read_i32(idx) || !read_u8(which)) { ok = false; break; }
             if (which & static_cast<uint8_t>(PatchBits::Meta)) {
@@ -297,6 +306,7 @@ bool DeltaLog::Replay(const std::wstring& path, uint64_t expected_built, ReplayF
         }
     }
     CloseHandle(h);
+    if (!ok) diagnostics::runtime::Event("index_wal_record_rejected", {{"offset", pos}, {"bytes", total}});
     return ok;
 }
 

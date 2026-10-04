@@ -1,4 +1,5 @@
 #include "edit_host.h"
+#include "FluentTokens.h"
 // color_picker.cpp — QFluent DropDownColorPickerButton popup replica.
 //
 // 1:1 recreation of QFluentKit's DropDownColorPickerButton popup, rendered
@@ -891,10 +892,8 @@ bool PaintLumaEditControl(State& s, HWND hwnd, HDC hdc) {
     (void)hdc;
     if (!s.compositor || !s.compositor->LumaTextEnabled()) return false;
     HideCaret(hwnd);
-    const D2D1_COLOR_F fg = s.dark ? D2D1::ColorF(1.0f, 1.0f, 1.0f)
-                                   : D2D1::ColorF(32.0f / 255.0f, 32.0f / 255.0f, 32.0f / 255.0f);
-    const D2D1_COLOR_F bg = s.dark ? D2D1::ColorF(45.0f / 255.0f, 45.0f / 255.0f, 45.0f / 255.0f)
-                                   : D2D1::ColorF(1.0f, 1.0f, 1.0f);
+    const D2D1_COLOR_F fg = ColorFromRef(HcEditText(s.dark ? RGB(255, 255, 255) : RGB(32, 32, 32)));
+    const D2D1_COLOR_F bg = ColorFromRef(HcEditBack(s.dark ? RGB(45, 45, 45) : RGB(255, 255, 255)));
     return s.compositor->PresentLumaEdit(hwnd, s.compositor->TextFormat(), fg, bg);
 }
 
@@ -924,7 +923,7 @@ LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR,
             HDC hdc = BeginPaint(hwnd, &ps);
             RECT rc{};
             GetClientRect(hwnd, &rc);
-            FillRect(hdc, &rc, s->edit_brush);
+            FillRect(hdc, &rc, EditBackBrush(s->edit_brush));
             EndPaint(hwnd, &ps);
         }
         return 0;
@@ -1019,9 +1018,9 @@ LRESULT CALLBACK Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (index < 0) break;
         HDC hdc = reinterpret_cast<HDC>(wp);
         // QSS text colors: white on dark, rgb(32,32,32) on light.
-        SetTextColor(hdc, s->dark ? RGB(255, 255, 255) : RGB(32, 32, 32));
-        SetBkColor(hdc, s->dark ? RGB(45, 45, 45) : RGB(255, 255, 255));
-        return reinterpret_cast<LRESULT>(s->edit_brush);
+        SetTextColor(hdc, HcEditText(s->dark ? RGB(255, 255, 255) : RGB(32, 32, 32)));
+        SetBkColor(hdc, HcEditBack(s->dark ? RGB(45, 45, 45) : RGB(255, 255, 255)));
+        return reinterpret_cast<LRESULT>(EditBackBrush(s->edit_brush));
     }
     case WM_COMMAND: {
         const HWND from = reinterpret_cast<HWND>(lp);

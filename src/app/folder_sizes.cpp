@@ -11,6 +11,7 @@
 #include <map>
 #include <mutex>
 #include <thread>
+#include <string_view>
 #include <limits>
 #include <set>
 #include "../common/path_utils.h"
@@ -131,6 +132,9 @@ struct FolderSizes::Impl {
     std::map<std::wstring, bool> wanted;
     std::set<std::wstring> manual, blocked_auto;
     std::vector<std::wstring> roots;
+    // The previous Sync arguments: repainting the same rows changes nothing.
+    std::vector<FolderSizeRequest> last_visible;
+    std::vector<std::wstring> last_roots;
     std::function<std::wstring()> cache_path;
     std::thread worker;
     std::atomic<bool> stopping{false}, changed{false};
@@ -361,6 +365,15 @@ void FolderSizes::Sync(std::vector<FolderSizeRequest> visible, std::vector<std::
     auto& s = *impl_;
     std::lock_guard lock(s.mutex);
     if (s.stopping) return;
+    // Every paint syncs, and a Size sort sends each folder of the listing (#58).
+    const auto same_request = [](const FolderSizeRequest& a, const FolderSizeRequest& b) {
+        return a.automatic == b.automatic && a.path == b.path;
+    };
+    if (s.cache.size() <= kCacheLimit && roots == s.last_roots &&
+        std::equal(visible.begin(), visible.end(), s.last_visible.begin(), s.last_visible.end(), same_request))
+        return;
+    s.last_visible = visible;
+    s.last_roots = roots;
     std::map<std::wstring, bool> wanted;
     for (const auto& request : visible) {
         const auto key = Key(request.path);
@@ -417,6 +430,23 @@ FolderSizeValue FolderSizes::Get(const std::wstring& path) const {
         if (request != s.wanted.end() && request->second) value.state = FolderSizeState::Calculating;
     }
     return value;
+}
+std::unordered_map<std::wstring, uint64_t> FolderSizes::KnownChildren(const std::wstring& parent) const {
+    std::unordered_map<std::wstring, uint64_t> children;
+    std::wstring prefix = Key(parent);
+    if (prefix.empty() || fs::IsVirtualPath(prefix)) return children;
+    if (prefix.back() != L'\\') prefix += L'\\';
+    auto& s = *impl_;
+    std::lock_guard lock(s.mutex);
+    for (auto it = s.cache.lower_bound(prefix); it != s.cache.end() && it->first.starts_with(prefix); ++it) {
+        if (!it->second.value.has_value) continue;
+        std::wstring_view rest(it->first);
+        rest.remove_prefix(prefix.size());
+        while (!rest.empty() && rest.front() == L'\\') rest.remove_prefix(1);
+        if (rest.empty() || rest.find(L'\\') != std::wstring_view::npos) continue;
+        children.emplace(std::wstring(rest), it->second.value.bytes);
+    }
+    return children;
 }
 void FolderSizes::Invalidate(const std::wstring& path) { impl_->Invalidate(path); }
 bool FolderSizes::TakeChanged() { return impl_->changed.exchange(false); }

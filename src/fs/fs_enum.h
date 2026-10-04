@@ -8,6 +8,15 @@
 
 namespace pulse::fs {
 
+enum class LinkKind { None, SymbolicLink, Junction };
+
+inline LinkKind ClassifyLink(DWORD attrs, DWORD reparse_tag) {
+    if (!(attrs & FILE_ATTRIBUTE_REPARSE_POINT)) return LinkKind::None;
+    if (reparse_tag == IO_REPARSE_TAG_SYMLINK) return LinkKind::SymbolicLink;
+    if (reparse_tag == IO_REPARSE_TAG_MOUNT_POINT) return LinkKind::Junction;
+    return LinkKind::None;
+}
+
 struct DirEntry {
     std::wstring name;
     uint64_t size = 0;
@@ -17,6 +26,7 @@ struct DirEntry {
     DWORD attrs = 0;
     bool is_dir = false;
     bool is_reparse = false;
+    DWORD reparse_tag = 0; // Unknown tags, including cloud placeholders, are not links.
     bool cloud_recall = false;
     uint8_t drive_type = 0; // GetDriveTypeW for "This PC" rows, 0 otherwise
     std::wstring full_path; // set for virtual views (search/tag); empty = parent+name
@@ -27,9 +37,16 @@ struct DirEntry {
     // Resolved .lnk target (empty = not a link or unresolvable). The fields
     // above always describe the .lnk file itself; these describe the target.
     std::wstring link_target;
+    // Worker-read, immediate destination for display only; may no longer exist.
+    // Does not change the entry's identity or shortcut penetration semantics.
+    std::wstring link_destination;
     uint64_t link_target_size = 0;
     FILETIME link_target_mtime{};
     bool link_target_is_dir = false;
+    // "This PC" rows: capacity and bytes available to the user; 0 = unknown
+    // (no media). Read on the worker thread with the rest of the listing.
+    uint64_t drive_total = 0;
+    uint64_t drive_free = 0;
 };
 
 // pulse:tag: / pulse:search: / pulse:workspace: — not filesystem paths.
@@ -47,5 +64,8 @@ std::wstring StripLnkSuffix(const std::wstring& name);
 
 // Enumerate a directory into out. Throws std::runtime_error on failure.
 void EnumerateDirectory(const std::wstring& path, std::vector<DirEntry>& out);
+
+// Metadata-only lookup for worker-side updates; never follows the target.
+DWORD ReadReparseTag(const std::wstring& path);
 
 } // namespace pulse::fs

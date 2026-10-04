@@ -42,14 +42,14 @@ int Dropdown(AppState& s, int index, std::vector<ui::FluentMenuItem> items) {
 }
 struct SettingDestination { I title;int page;unsigned expanded; };
 constexpr SettingDestination destinations[]={
-    {I::SettingsTheme,0,0},{I::SettingsThemeColor,0,0},{I::SettingsWindowEffect,0,0},{I::SettingsLanguage,0,0},{I::SettingsTextRender,0,0},
-    {I::SettingsLaunch,0,0},{I::SettingsKeepRunning,0,0},
-    {I::SettingsHomeFolder,0,0},{I::SettingsStartupOpen,0,0},{I::SettingsNewTabOpen,0,0},{I::SettingsRowHeight,0,0},{I::SettingsShowPerformance,0,0},
-    {I::ListSmartDate,0,0},{I::ListZebraRows,0,0},{I::ListSizeBar,0,0},{I::ListTagNameColor,0,0},{I::SettingsFolderSort,0,0},
+    {I::SettingsTheme,0,0},{I::SettingsThemeColor,0,0},{I::SettingsWindowEffect,0,0},{I::SettingsLanguage,0,0},{I::SettingsTextRender,0,0},{I::SettingsUiFontSize,0,0},
+    {I::SettingsIntegration,0,0},{I::SettingsDefaultManager,0,0},{I::SettingsLaunch,0,0},{I::SettingsStartInTray,0,0},{I::SettingsKeepRunning,0,0},{I::SettingsNotifyIcon,0,0},
+    {I::SettingsHomeFolder,0,0},{I::SettingsStartupOpen,0,0},{I::SettingsNewTabOpen,0,0},{I::SettingsCloseLastTab,0,0},{I::SettingsRowHeight,0,0},{I::SettingsShowPerformance,0,0},
+    {I::ListSmartDate,0,0},{I::ListZebraRows,0,0},{I::ListSizeBar,0,0},{I::ListTagNameColor,0,0},{I::ListSelectionOutline,0,0},{I::SettingsFolderSort,0,0},{I::SettingsConfirmDelete,0,0},
     {I::SettingsWallpaper,0,1},{I::SettingsWallpaperLook,0,1},{I::SettingsWallpaperBlur,0,1},{I::SettingsTrayIcon,0,1},{I::SettingsShowHidden,0,1},{I::SettingsShowProtected,0,1},{I::PinnedNames,0,1},{I::SettingsVerticalTabs,0,1},{I::SettingsHints,0,1},{I::SettingsHintsReset,0,1},
-    {I::SettingsBlankClickBack,0,1},{I::SettingsChangeTracking,0,1},{I::SettingsOpenFolders,0,1},{I::SettingsWinE,0,1},{I::SettingsShellTags,0,1},
+    {I::SettingsBlankClickBack,0,1},{I::SettingsChangeTracking,0,1},{I::SettingsOpenFolders,0,0},{I::SettingsWinE,0,0},{I::SettingsThisPc,0,0},{I::SettingsExplorerWindows,0,0},{I::SettingsShellTags,0,1},
     {I::GlobalSearch,1,0},{I::GlobalSearchHotkey,1,0},{I::SearchPinyin,1,0},{I::ContentIndexManage,1,0},{I::IndexLocation,1,2},{I::LocalDrives,1,2},
-    {I::Exclusions,1,2},{I::ServerFolders,1,2},{I::SettingsContextMenu,2,0},{I::SettingsDuplicates,4,0},{I::SettingsAboutDiagnostics,3,0},
+    {I::Exclusions,1,2},{I::ServerFolders,1,2},{I::SettingsContextMenu,2,0},{I::SettingsDuplicates,4,0},{I::SettingsAboutDiagnostics,3,0},{I::SettingsAutoUpdate,3,0},
 };
 std::vector<ui::FluentMenuItem> FilterSettings(const std::wstring& query) {
     std::wstring needle=query;std::transform(needle.begin(),needle.end(),needle.begin(),towlower);
@@ -112,15 +112,16 @@ bool HandleSettingsControl(AppState& s,const H& hit) {
     switch(hit.region) {
     case H::SettingsFind: FindSetting(s);break;
     case H::SettingsDisclosure: {
-        if(hit.index!=0 && hit.index!=1 && hit.index!=2 && (hit.index<8 || hit.index>13)) return true; // 8-13: 右键菜单 cards
+        if((hit.index<0 || hit.index>3) && (hit.index<8 || hit.index>13)) return true; // 8-13: 右键菜单 cards
         s.settingsExpanded^=1u<<hit.index;
         // Re-check the system extensions each time the formats card opens: the
         // user may just have installed one from its "Get" button.
-        if(hit.index==2 && (s.settingsExpanded & 4u)) ui::DetectPreviewCodecs(true);
+        if(hit.index==2 && (s.settingsExpanded & 4u)) ui::DetectPreviewCodecs(true, s.hwnd);
         auto vm=BuildVm(s,false);
         const float maximum=s.renderer.SettingsMaxScroll(vm,static_cast<float>(s.compositor.Width()),static_cast<float>(s.compositor.Height()));
         s.settings.SetScroll(s.settings.scroll(),maximum);break;
     }
+    case H::SettingsIntegration: s.settings.IntegrationAction(hit.index);break;
     case H::SettingsPreviewStore: ui::OpenPreviewCodecStore(s.hwnd,hit.index);break;
     case H::SettingsGlobalSearchHotkey: SetFocus(s.hwnd);s.settings.BeginGlobalSearchHotkeyCapture();break;
     case H::SettingsTheme: SetThemeMode(s,hit.index);break;
@@ -134,9 +135,10 @@ bool HandleSettingsControl(AppState& s,const H& hit) {
             }
             int command=Dropdown(s,hit.index,std::move(items));if(command>=1 && command<=ui::kWindowEffectCount) s.settings.WindowEffect(ui::WindowEffectId(static_cast<ui::WindowEffect>(command-1)));
         } else {
-            const I labels[]={I::LanguageSystem,I::LanguageZhCN,I::LanguageEnUS};const wchar_t* ids[]={L"system",L"zh-CN",L"en-US"};
-            for(int i=0;i<3;++i) items.push_back(Item(i+1,labels[i],s.appPrefs.language==ids[i]));
-            int command=Dropdown(s,hit.index,std::move(items));if(command>=1 && command<=3) s.settings.Language(ids[command-1]);
+            const I labels[]={I::LanguageSystem,I::LanguageZhCN,I::LanguageZhTW,I::LanguageEnUS};const wchar_t* ids[]={L"system",L"zh-CN",L"zh-TW",L"en-US"};
+            constexpr int count=static_cast<int>(std::size(ids));
+            for(int i=0;i<count;++i) items.push_back(Item(i+1,labels[i],s.appPrefs.language==ids[i]));
+            int command=Dropdown(s,hit.index,std::move(items));if(command>=1 && command<=count) s.settings.Language(ids[command-1]);
         }
         break;
     }

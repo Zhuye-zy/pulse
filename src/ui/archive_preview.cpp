@@ -254,12 +254,10 @@ std::wstring ArchivePreview::SelectedPath() const {
 }
 
 std::wstring ArchivePreview::StateNote() const {
-    const bool zh = pulse::l10n::effective_language() == pulse::l10n::Language::ZhCN;
-    if (counting_) return zh ? L"\x7EDF\x8BA1\x4E2D\x2026" : L"Counting\x2026";
+    if (counting_) return pulse::l10n::Pick(L"\x7EDF\x8BA1\x4E2D\x2026", L"Counting\x2026");
     if (!incomplete_) return {};
     if (folder_)
-        return zh ? L"\x5DF2\x8FBE\x7EDF\x8BA1\x4E0A\x9650\xFF0C\x6570\x503C\x4E3A\x4E0B\x9650"
-                  : L"Scan limit reached; totals are minimums";
+        return pulse::l10n::Pick(L"\x5DF2\x8FBE\x7EDF\x8BA1\x4E0A\x9650\xFF0C\x6570\x503C\x4E3A\x4E0B\x9650", L"Scan limit reached; totals are minimums");
     return pulse::l10n::Get(StringId::ArcIncomplete);
 }
 
@@ -514,12 +512,11 @@ float ArchivePreview::DrawHeader(ID2D1DeviceContext* dc, const D2D1_RECT_F& rect
         Fill(dc, R(cx - 12.0f * u, cy - 10.0f * u, cx - 1.0f * u, cy - 4.0f * u), 2.0f * u, HexColor(kFolderGold));
         Fill(dc, R(cx - 12.0f * u, cy - 7.0f * u, cx + 12.0f * u, cy + 9.0f * u), 3.0f * u, HexColor(kFolderGold));
         Fill(dc, R(cx - 12.0f * u, cy - 3.5f * u, cx + 12.0f * u, cy + 9.0f * u), 3.0f * u, HexColor(0xF5C542));
-        const bool zh = pulse::l10n::effective_language() == pulse::l10n::Language::ZhCN;
         title = file_name_;
         sub = std::to_wstring(dir_count_) + L" " + pulse::l10n::Get(StringId::ArcFolders) + L" · " +
               std::to_wstring(file_count_) + L" " + pulse::l10n::Get(StringId::ArcFiles) + L" · " +
               (incomplete_ || counting_ ? L"\x2265 " : L"") + pulse::format::ByteSize(unpacked_);
-        if (counting_) sub += zh ? L" \xFF08\x7EDF\x8BA1\x4E2D\x2026\xFF09" : L" (counting\x2026)";
+        if (counting_) sub += pulse::l10n::Pick(L" \xFF08\x7EDF\x8BA1\x4E2D\x2026\xFF09", L" (counting\x2026)");
     } else {
     Fill(dc, t, 9.0f * s, HexColor(kArchiveAmber, 0.15f));
     DrawText(dc, chip_.Get(), format_, t, HexColor(kArchiveAmber), DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -801,8 +798,7 @@ void ArchivePreview::Draw(ID2D1DeviceContext* dc, Compositor* compositor, const 
         {std::to_wstring(file_count_), pulse::l10n::Get(StringId::ArcFiles), false},
         {std::to_wstring(dir_count_), pulse::l10n::Get(StringId::ArcFolders), false},
         {(folder_ && (incomplete_ || counting_) ? L"\x2265" : L"") + pulse::format::ByteSize(unpacked_),
-         folder_ ? std::wstring(pulse::l10n::effective_language() == pulse::l10n::Language::ZhCN
-                                    ? L"\x603B\x5927\x5C0F" : L"Total size")
+         folder_ ? std::wstring(pulse::l10n::Pick(L"\x603B\x5927\x5C0F", L"Total size"))
                  : std::wstring(pulse::l10n::Get(StringId::ArcUnpacked)),
          !folder_},
     };

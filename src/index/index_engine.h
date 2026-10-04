@@ -66,6 +66,21 @@ struct SearchResult {
     uint64_t revision = 0;
     std::vector<Hit> hits;
     size_t total = 0;
+    DWORD error = 0;
+    // Filtered searches: parent folders DirVisibility could not answer yet.
+    // No hits are produced until every one of them has been checked.
+    std::vector<std::pair<int32_t, std::wstring>> unchecked_dirs;
+    uint64_t layout = 0;  // Engine::LayoutEpoch() the node ids above belong to
+};
+
+// Optional per-caller filter for Engine::Search. A match is returned only
+// when the caller may list its parent folder, since that listing is what
+// would show the name to the caller in Explorer. Node ids passed to State()
+// are stable for one Engine::LayoutEpoch().
+class DirVisibility {
+public:
+    virtual ~DirVisibility() = default;
+    virtual int State(int32_t dir) const = 0;  // 1 listable, 0 not, -1 unknown
 };
 
 #pragma pack(push, 1)
@@ -137,11 +152,13 @@ public:
     void Stop();
 
     SearchResult Search(const Query& q, const std::atomic<uint32_t>* latest = nullptr,
-                        uint32_t expected = 0) const;
+                        uint32_t expected = 0,
+                        const DirVisibility* visibility = nullptr) const;
     size_t Count() const { return indexed_.load(); }
     bool Ready() const { return ready_.load(); }
     bool PinyinReady() const { return pinyin_ready_.load(); }
     uint64_t Revision() const { return revision_.load(); }
+    uint64_t LayoutEpoch() const { return layout_epoch_.load(); }
     FileFeedPage ReadFeed(bool changes, const std::wstring& root, uint64_t epoch, uint64_t cursor) const;
     std::vector<IndexedFolderSize> FolderSizes(const std::vector<std::wstring>& paths);
     std::wstring Status() const;
@@ -155,6 +172,7 @@ public:
 
 private:
     FolderSizeIndex folder_sizes_;
+    ULONGLONG folder_size_retry_after_ = 0;
     bool folder_size_usn_update_ = false;
     std::atomic<bool> folder_size_gap_{false};
     FolderSizeIndex::Item FolderSizeItem(int32_t id) const;
@@ -288,6 +306,7 @@ private:
     std::map<std::wstring, std::unique_ptr<UsnStream>> journal_streams_;
     HANDLE change_signal_ = nullptr;
     std::atomic<uint64_t> revision_{1};
+    std::atomic<uint64_t> layout_epoch_{1};  // bumped whenever node ids are renumbered
     std::atomic<uint64_t> feed_epoch_{(GetTickCount64() << 20) ^ GetCurrentProcessId()};
     uint64_t feed_sequence_ = 0;
     ChangeFeedHistory feed_changes_;
@@ -307,7 +326,7 @@ private:
     void FlushDeltas();
     void OpenDeltasLocked();
     void CloseDeltas();
-    void ReplayDeltasLocked();
+    bool ReplayDeltasLocked();
     DeltaLog* DeltaFor(wchar_t letter);
     void FullRebuild(const char* reason = "requested_or_watch_gap");
     void PreserveOfflineVolumesLocked(const std::vector<VolumeInfo>& active,
@@ -375,7 +394,13 @@ private:
     bool MatchNodeLocked(int32_t i, const CompiledQuery& q, int32_t prefix_node,
                          bool folders_only, bool use_attrs) const;
     void UpdateVolumeVisibilityLocked(const std::vector<VolumeInfo>& active, bool only_hide = false);
-    void InvalidateFilterLocked() { ++filter_epoch_; if (!folder_size_usn_update_) folder_sizes_.Reset(); }
+    void InvalidateFilterLocked() {
+        ++filter_epoch_;
+        if (!folder_size_usn_update_) {
+            folder_sizes_.Reset();
+            folder_size_retry_after_ = 0;
+        }
+    }
     void SetStatus(std::wstring s);
     bool IsExcludedPath(std::wstring_view path) const;
     static bool ShouldSkipName(std::wstring_view name);
@@ -432,6 +457,7 @@ private:
     ULONGLONG last_struct_tick_ = 0;
     ULONGLONG last_delta_flush_tick_ = 0;
     std::unordered_map<std::wstring, ULONGLONG> volume_retry_after_;
+    std::unordered_map<std::wstring, ULONGLONG> volume_recovered_after_;
     FilenameTiming filename_timing_;
 
     struct WalkWatch {

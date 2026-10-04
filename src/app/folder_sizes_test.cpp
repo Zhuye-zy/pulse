@@ -1,6 +1,7 @@
 #ifdef PULSE_WITH_SELFTEST
 #include "folder_sizes.h"
 #include "folder_sizes_ui.h"
+#include "entry_sort.h"
 #include "app_state.h"
 #include "../ui/ui_renderer_internal.h"
 #include "../common/windows_compat.h"
@@ -226,6 +227,71 @@ bool RunFolderSizesTest() {
         vm.pane_slots[0].pane.is_recycle = true;
         FillFolderSizes(*state, vm);
         check(vm.pane_slots[0].pane.folder_size_labels.empty(), "recycle results do not request folder sizes");
+        state->folderSizes.Stop();
+    }
+    {
+        // #58: a Size sort orders folders by their totals; unknown ones trail.
+        auto entry = [](const wchar_t* name, bool dir, uint64_t size) {
+            fs::DirEntry e; e.name = name; e.is_dir = dir; e.size = size; return e;
+        };
+        auto names = [](const std::vector<fs::DirEntry>& rows) {
+            std::wstring out;
+            for (const auto& e : rows) out += e.name + L",";
+            return out;
+        };
+        const FolderSizeLookup sizes{{L"big", 9000}, {L"small", 10}, {L"mid", 500}};
+        const auto saved_mode = CurrentFolderSortMode();
+        SetFolderSortMode(FolderSortMode::FoldersFirst);
+        std::vector<fs::DirEntry> rows{entry(L"Mid", true, 0), entry(L"zfile.bin", false, 700),
+            entry(L"unknown", true, 0), entry(L"BIG", true, 0), entry(L"afile.bin", false, 5),
+            entry(L"small", true, 0)};
+        SortEntriesBySize(rows, ui::SortDirection::Asc, sizes);
+        check(names(rows) == L"small,Mid,BIG,unknown,afile.bin,zfile.bin,",
+              "size sort: folders ascend by their totals and an unknown folder trails");
+        SortEntriesBySize(rows, ui::SortDirection::Desc, sizes);
+        check(names(rows) == L"BIG,Mid,small,unknown,zfile.bin,afile.bin,",
+              "size sort: descending order keeps the unknown folder last");
+        SetFolderSortMode(FolderSortMode::Mixed);
+        SortEntriesBySize(rows, ui::SortDirection::Asc, sizes);
+        check(names(rows) == L"afile.bin,small,Mid,zfile.bin,BIG,unknown,",
+              "size sort: mixed order interleaves folder totals with file sizes");
+        const auto before = names(rows);
+        bool threw = false;
+        try { SortEntriesBySize(rows, ui::SortDirection::Desc, sizes, [] { throw 1; }); } catch (int) { threw = true; }
+        check(threw && names(rows) == before, "size sort: an abandoned sort leaves the rows untouched");
+        SetFolderSortMode(saved_mode);
+        check(FolderSizeSignature({}) == 0 &&
+            FolderSizeSignature(sizes) != FolderSizeSignature({{L"big", 9001}, {L"small", 10}, {L"mid", 500}}),
+              "size sort: the signature notices a changed total");
+
+        const auto sorted = fixture / L"sorted";
+        std::filesystem::create_directories(sorted / L"Big");
+        std::filesystem::create_directories(sorted / L"small");
+        file(sorted / L"Big" / L"x.bin", 3000);
+        file(sorted / L"small" / L"y.bin", 10);
+        auto state = std::make_unique<AppState>();
+        state->isolatedTest = true;
+        state->appPrefs.persist = false;
+        state->settings.BindUi(state->appPrefs, state->ctxMenuPrefs, state->index, state->networkIndex, {});
+        ui::WindowViewModel vm;
+        ui::PaneSlotView slot;
+        slot.rect = D2D1::RectF(240, 120, 900, 550); slot.focused = true;
+        slot.pane.path = sorted.wstring(); slot.pane.is_file_system = true;
+        slot.pane.view_mode = ui::ViewMode::List;  // draws no folder sizes
+        slot.pane.sort_column = ui::SortColumn::Size;
+        auto listing = std::make_shared<std::vector<fs::DirEntry>>();
+        listing->push_back(entry(L"Big", true, 0));
+        listing->push_back(entry(L"small", true, 0));
+        slot.pane.snapshot = listing;
+        vm.pane_slots.push_back(slot);
+        const auto known = [&] {
+            FillFolderSizes(*state, vm);
+            const auto children = state->folderSizes.KnownChildren(sorted.wstring() + L"\\");
+            return children.size() == 2 && children.contains(L"big") && children.at(L"big") == 3000 &&
+                children.contains(L"small") && children.at(L"small") == 10;
+        };
+        check(wait(known), "size sort: every folder is sized, shown or not, and known by its child name");
+        check(vm.pane_slots[0].pane.folder_size_labels.empty(), "size sort: a view without size labels still draws none");
         state->folderSizes.Stop();
     }
     check(RunFolderSizeIndexClientTest(fixture, log), "folder size index IPC integration");

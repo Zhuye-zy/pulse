@@ -1,0 +1,84 @@
+id	display	expectation	source	katex_accepted	mathml_tags	error	mathml_constructs
+quadratic_roots	1	native_accept	x_{1,2}=\frac{-b\pm\sqrt{b^2-4ac}}{2a}	1	math:1,mfrac:1,mi:6,mn:5,mo:5,mrow:5,msqrt:1,msub:1,msup:1	-	brace:0,phantom:0
+normal_density	1	native_accept	p(x)=\frac{1}{\sigma\sqrt{2\pi}}\exp\left(-\frac{(x-\mu)^2}{2\sigma^2}\right)	1	math:1,mfrac:2,mi:8,mn:5,mo:10,mrow:6,msqrt:1,msup:2	-	brace:0,phantom:0
+bayes_rule	1	native_accept	P(A\mid B)=\frac{P(B\mid A)P(A)}{P(B)}	1	math:1,mfrac:1,mi:10,mo:11,mrow:3	-	brace:0,phantom:0
+binomial_probability	1	native_accept	P(X=k)=\binom{n}{k}p^k(1-p)^{n-k}	1	math:1,mfrac:1,mi:10,mn:1,mo:10,mrow:3,msup:2	-	brace:0,phantom:0
+geometric_series	1	native_accept	\sum_{k=0}^{n}r^k=\frac{1-r^{n+1}}{1-r}	1	math:1,mfrac:1,mi:7,mn:4,mo:6,mrow:5,msup:2,munderover:1	-	brace:0,phantom:0
+fourier_transform	1	native_accept	F(\omega)=\int_{-\infty}^{\infty}f(t)e^{-i\omega t}\,\mathrm{d}t	1	math:1,mi:12,mo:8,mrow:3,msubsup:1,msup:1,mtext:1	-	brace:0,phantom:0
+second_derivative	0	native_accept	f''(x)=2\cos x-x\sin x	1	math:1,mi:7,mn:1,mo:8,mrow:2,msup:1	-	brace:0,phantom:0
+gradient_descent	1	native_accept	\mathbf{x}_{k+1}=\mathbf{x}_k-\eta\nabla f(\mathbf{x}_k)	1	math:1,mi:9,mn:1,mo:5,mrow:2,msub:3	-	brace:0,phantom:0
+matrix_system	1	native_accept	\begin{pmatrix}2&-1\\1&3\end{pmatrix}\begin{pmatrix}x\\y\end{pmatrix}=\begin{pmatrix}4\\7\end{pmatrix}	1	math:1,mi:2,mn:6,mo:8,mrow:5,mstyle:8,mtable:3,mtd:8,mtr:6	-	brace:0,phantom:0
+determinant_identity	1	native_accept	\det\begin{pmatrix}a&b\\c&d\end{pmatrix}=ad-bc	1	math:1,mi:9,mo:5,mrow:2,mstyle:4,mtable:1,mtd:4,mtr:2	-	brace:0,phantom:0
+piecewise_loss	1	native_accept	L(r)=\begin{cases}\frac{r^2}{2}&|r|\leq1\\|r|-\frac{1}{2}&|r|>1\end{cases}	1	math:1,mfrac:2,mi:12,mn:6,mo:7,mrow:5,mstyle:4,msup:1,mtable:1,mtd:4,mtr:2	-	brace:0,phantom:0
+aligned_derivation	1	native_accept	\begin{aligned}(a+b)^2&=a^2+2ab+b^2\\(a-b)^2&=a^2-2ab+b^2\end{aligned}	1	math:1,mi:12,mn:8,mo:12,mrow:6,mstyle:4,msup:6,mtable:1,mtd:4,mtr:2	-	brace:0,phantom:0
+nested_continued_fraction	1	native_accept	q=1+\frac{1}{2+\frac{1}{3+\frac{1}{4}}}	1	math:1,mfrac:3,mi:1,mn:7,mo:4,mrow:3	-	brace:0,phantom:0
+root_and_scripts	0	native_accept	z_n=\sqrt[n+1]{a_i^2+b_j^2}	1	math:1,mi:7,mn:3,mo:3,mroot:1,mrow:3,msub:1,msubsup:2	-	brace:0,phantom:0
+constrained_sum	1	native_accept	S_n=\sum_{\substack{i+j=n\\i,j\geq0}}a_i b_j	1	math:1,mi:11,mn:1,mo:6,mrow:3,mstyle:3,msub:3,mtable:1,mtd:2,mtr:2,munder:1	-	brace:0,phantom:0
+annotated_limit	1	native_accept	\operatorname*{argmax}_{x\in\mathbb{R}}\left[-(x-2)^2\right]=2	1	math:1,mi:4,mn:3,mo:9,mrow:4,msup:1,munder:1	-	brace:0,phantom:0
+convergence_arrow	1	native_accept	x_n\xrightarrow[n\to\infty]{\text{in probability}}x	1	math:1,mi:5,mo:2,mpadded:2,mrow:2,msub:1,mtext:1,munderover:1	-	brace:0,phantom:0
+tensor_indices	0	native_accept	T_{ij}^{kl}=A_i^kB_j^l-A_i^lB_j^k	1	math:1,mi:17,mo:2,mrow:3,msubsup:5	-	brace:0,phantom:0
+vector_accents	1	native_accept	\vec{v}=\overrightarrow{AB},\quad\hat{u}=\frac{\vec{v}}{\sqrt{v_1^2+v_2^2}}	1	math:1,mfrac:1,mi:7,mn:4,mo:8,mover:4,mrow:3,mspace:1,msqrt:1,msubsup:2	-	brace:0,phantom:0
+sample_mean	1	native_accept	\bar{x}=\frac{1}{n}\sum_{i=1}^{n}x_i,\quad\widetilde{x}=\operatorname{median}(x_1,\ldots,x_n)	1	math:1,mfrac:1,mi:11,mn:3,mo:13,mover:2,mrow:2,mspace:1,msub:3,munderover:1	-	brace:0,phantom:0
+boxed_energy	1	native_accept	\boxed{E=\frac{1}{2}mv^2+mgh}	1	math:1,menclose:1,mfrac:1,mi:6,mn:3,mo:2,mrow:2,mstyle:3,msup:1	-	brace:0,phantom:0
+cancelled_ratio	1	native_accept	\frac{\cancel{x}(x+1)}{\cancel{x}}=x+1	1	math:1,menclose:2,mfrac:1,mi:4,mn:2,mo:5,mrow:2	-	brace:0,phantom:0
+array_alignment	1	native_accept	\begin{array}{rcl}a+b&=&c\\a-b&=&d\end{array}	1	math:1,mi:6,mo:4,mrow:2,mstyle:6,mtable:1,mtd:6,mtr:2	-	brace:0,phantom:0
+inline_style_fraction	0	native_accept	q=\dfrac{a}{b}+\tfrac{c}{d}	1	math:1,mfrac:2,mi:5,mo:2,mrow:1,mstyle:1	-	brace:0,phantom:0
+nested_style_scope	1	native_accept	A={\scriptstyle x^{y_z}}+{\displaystyle\frac{1}{1+x}}	1	math:1,mfrac:1,mi:5,mn:2,mo:3,mrow:2,mstyle:2,msub:1,msup:1	-	brace:0,phantom:0
+annotated_equality	1	native_accept	f(x)\overset{\text{def}}{=}x^2,\quad a\underset{n\to\infty}{\longrightarrow}b	1	math:1,mi:7,mn:1,mo:10,mover:1,mrow:2,mspace:1,msup:1,mtext:1,munder:1	-	brace:0,phantom:0
+modular_equation	0	native_accept	a^{p-1}\equiv1\pmod{p}	1	math:1,mi:6,mn:2,mo:4,mrow:3,mspace:3,msup:1	-	brace:0,phantom:0
+text_with_spaces	0	native_accept	\textbf{mean value}\quad f(c)=\frac{1}{b-a}\int_a^b f(x)\,dx	1	math:1,mfrac:1,mi:10,mn:1,mo:7,mrow:3,mspace:1,msubsup:1,mtext:4	-	brace:0,phantom:0
+calligraphic_space	1	native_fallback	\mathcal{L}(\theta)=\sum_{i=1}^{n}\log p(x_i\mid\theta)	1	math:1,mi:9,mn:1,mo:9,mrow:2,msub:1,munderover:1	-	brace:0,phantom:0
+underbrace_derivation	1	native_accept	S_n=\underbrace{1+1+\cdots+1}_{n\text{ terms}}=n	1	math:1,mi:4,mn:3,mo:7,mrow:3,msub:1,mtext:1,munder:2	-	brace:1,phantom:0
+explicit_spacing	0	native_accept	a\hspace{2em}b=c	1	math:1,mi:3,mo:1,mrow:1,mspace:1	-	brace:0,phantom:0
+colored_error	1	native_fallback	\color{red}{e_n}=x_n-x	1	math:1,mi:5,mo:2,mrow:1,mstyle:1,msub:2	-	brace:0,phantom:0
+equation_number	1	native_fallback	E=mc^2\tag{1}	1	math:1,mi:3,mn:1,mo:1,mrow:1,msup:1,mtable:1,mtd:4,mtext:1,mtr:1	-	brace:0,phantom:0
+macro_definition	1	native_fallback	\newcommand{\energy}[1]{#1c^2}\energy{m}	1	math:1,mi:2,mn:1,mrow:1,msup:1	-	brace:0,phantom:0
+phantom_alignment	1	native_accept	\begin{aligned}x&=1\\\phantom{x}+y&=2\end{aligned}	1	math:1,mi:3,mn:2,mo:3,mphantom:1,mrow:5,mstyle:4,mtable:1,mtd:4,mtr:2	-	brace:0,phantom:1
+array_vertical_rules	1	native_accept	\begin{array}{c|c}a&b\\c&d\end{array}	1	math:1,mi:4,mstyle:4,mtable:1,mtd:4,mtr:2	-	brace:0,phantom:0
+unclosed_fraction	1	invalid	f(x)=\frac{x+1}{x-1	0		KaTeX parse error: Unexpected end of input in a macro argument, expected '}' at end of input: …=\frac{x+1}{x-1	brace:0,phantom:0
+duplicate_superscript	0	invalid	x^2^3+y=0	0		KaTeX parse error: Double superscript at position 4: x^2^̲3+y=0	brace:0,phantom:0
+missing_radicand	0	invalid	a+\sqrt	0		KaTeX parse error: Expected group as argument to '\sqrt' at end of input: a+\sqrt	brace:0,phantom:0
+mismatched_environment	1	invalid	\begin{pmatrix}a&b\\c&d\end{bmatrix}	0		KaTeX parse error: Mismatch: \begin{pmatrix} matched by \end{bmatrix} at position 24: …matrix}a&b\\c&d\̲e̲n̲d̲{bmatrix}	brace:0,phantom:0
+missing_right_fence	1	invalid	\left(\frac{a}{b}+c	0		KaTeX parse error: Expected '\right', got 'EOF' at end of input: …t(\frac{a}{b}+c	brace:0,phantom:0
+unknown_command	0	invalid	a+\pulseunknown{b}=c	0		KaTeX parse error: Undefined control sequence: \pulseunknown at position 3: a+\̲p̲u̲l̲s̲e̲u̲n̲k̲n̲o̲w̲n̲{b}=c	brace:0,phantom:0
+stray_alignment	0	invalid	x&=y	0		KaTeX parse error: Expected 'EOF', got '&' at position 2: x&̲=y	brace:0,phantom:0
+array_column_overflow	1	invalid	\begin{array}{cc}a&b&c\end{array}	0		KaTeX parse error: LaTeX-incompatible input and strict mode is set to 'error': Too few columns specified in the {array} column argument. [textEnv]	brace:0,phantom:0
+ruled_augmented_system	1	native_accept	\left[\begin{array}{rr|r}\hline2&-1&4\\1&3&7\\\hline\end{array}\right]	1	math:1,menclose:1,mn:6,mo:3,mrow:2,mstyle:6,mtable:1,mtd:6,mtr:2	-	brace:0,phantom:0
+double_rule_table	1	native_accept	\begin{array}{||c||c||}\hline\hline x&x^2\\\hline1&1\\2&4\\\hline\hline\end{array}	1	math:1,menclose:1,mi:2,mn:5,mrow:1,mstyle:6,msup:1,mtable:1,mtd:6,mtr:3	-	brace:0,phantom:0
+array_row_gap_em	1	native_accept	\begin{array}{rcl}f(x)&=&\frac{x+1}{x-1}\\[0.6em]g(x)&=&\sqrt{x^2+1}\end{array}	1	math:1,mfrac:1,mi:7,mn:4,mo:9,mrow:5,msqrt:1,mstyle:6,msup:1,mtable:1,mtd:6,mtr:2	-	brace:0,phantom:0
+array_row_gap_ex_pt	1	native_accept	\begin{array}{c|c}n&a_n\\[1ex]\hline1&\frac{1}{2}\\[3pt]2&\frac{2}{3}\end{array}	1	math:1,mfrac:2,mi:3,mn:6,mstyle:6,msub:1,mtable:1,mtd:6,mtr:3	-	brace:0,phantom:0
+ruled_nested_matrix	1	native_accept	M=\begin{array}{|c|c|}\hline\frac{a}{b}&\sqrt{c}\\\hline\begin{matrix}1&0\\0&1\end{matrix}&d^2\\\hline\end{array}	1	math:1,menclose:1,mfrac:1,mi:5,mn:5,mo:1,mrow:1,msqrt:1,mstyle:8,msup:1,mtable:2,mtd:8,mtr:4	-	brace:0,phantom:0
+conditional_middle	1	native_accept	P\left(A\middle|B\right)=\frac{P(A\cap B)}{P(B)}	1	math:1,mfrac:1,mi:8,mo:9,mrow:4	-	brace:0,phantom:0
+set_middle_condition	1	native_accept	S=\left\{x\in\mathbb{R}\middle|x^2\leq1\right\}	1	math:1,mi:4,mn:2,mo:6,mrow:2,msup:1	-	brace:0,phantom:0
+multiple_middle_fences	1	native_accept	T=\left(a\middle|\frac{b}{c}\middle\Vert\sqrt{d}\right)	1	math:1,mfrac:1,mi:5,mo:5,mrow:2,msqrt:1	-	brace:0,phantom:0
+nested_middle_fences	1	native_accept	Q=\left(\left\{x\middle|x>0\right\}\middle|\frac{a}{b}\right)	1	math:1,mfrac:1,mi:5,mn:1,mo:8,mrow:3	-	brace:0,phantom:0
+underbrace_fraction_sum	1	native_accept	S=\underbrace{\frac{1}{n}+\cdots+\frac{1}{n}}_{n\text{ terms}}=1	1	math:1,mfrac:2,mi:4,mn:3,mo:6,mrow:3,mtext:1,munder:2	-	brace:1,phantom:0
+overbrace_power_product	1	native_accept	\overbrace{a\cdot a\cdots a}^{n\text{ factors}}=a^n	1	math:1,mi:6,mo:4,mover:2,mrow:3,msup:1,mtext:1	-	brace:1,phantom:0
+brace_opposite_scripts	1	native_accept	\underbrace{a+b}_{s}^{2}+\overbrace{c+d}^{t}_{k}=q	1	math:1,mi:8,mn:1,mo:6,mover:2,mrow:3,msubsup:1,munder:1	-	brace:2,phantom:0
+nested_brace_labels	1	native_accept	\overbrace{\underbrace{a+b}_{s}+c}^{t}=s+c	1	math:1,mi:7,mo:6,mover:2,mrow:3,munder:2	-	brace:2,phantom:0
+phantom_fraction_alignment	1	native_accept	\begin{aligned}u&=\frac{a}{b}+c\\v&=\phantom{\frac{a}{b}}+d\end{aligned}	1	math:1,mfrac:2,mi:8,mo:4,mphantom:1,mrow:4,mstyle:4,mtable:1,mtd:4,mtr:2	-	brace:0,phantom:1
+horizontal_phantom_spacing	0	native_accept	a\hphantom{\frac{b}{c}}+d=e	1	math:1,mfrac:1,mi:5,mo:2,mpadded:1,mphantom:1,mrow:1	-	brace:0,phantom:1
+vertical_phantom_height	0	native_accept	x^{\vphantom{\frac{a}{b}}2}+y_1=z	1	math:1,mfrac:1,mi:5,mn:2,mo:2,mpadded:1,mphantom:1,mrow:2,msub:1,msup:1	-	brace:0,phantom:1
+signed_hspace_equation	0	native_accept	a\hspace{-0.2em}b+\hspace{2pt}c=d	1	math:1,mi:4,mo:2,mrow:1,mspace:2	-	brace:0,phantom:0
+mixed_unit_hspace	1	native_accept	\sqrt{x}\hspace{1ex}\frac{a}{b}\hspace{0.5em}+c=d	1	math:1,mfrac:1,mi:5,mo:2,mrow:1,mspace:2,msqrt:1	-	brace:0,phantom:0
+brace_phantom_alignment	1	native_accept	\overbrace{a+\hphantom{b}+c}^{\text{three positions}}=s	1	math:1,mi:4,mo:4,mover:2,mpadded:1,mphantom:1,mrow:2,mtext:1	-	brace:1,phantom:1
+ruled_brace_phantom_array	1	native_accept	\begin{array}{|l|r|}\hline\underbrace{a+b}_{s}&s^2\\[0.4em]\hline\phantom{a}+c&\frac{c}{d}\hspace{2pt}\\\hline\end{array}	1	math:1,menclose:1,mfrac:1,mi:8,mn:1,mo:3,mphantom:1,mrow:4,mspace:1,mstyle:4,msup:1,mtable:1,mtd:4,mtr:2,munder:2	-	brace:1,phantom:1
+middle_outside_fence	0	invalid	P(A\middle|B)=q	0		KaTeX parse error: \middle without preceding \left at position 11: P(A\middle|̲B)=q	brace:0,phantom:0
+missing_middle_delimiter	1	invalid	\left(x\middle\right)	0		KaTeX parse error: Got function '\right' with no arguments as argument to '\middle' at position 15: \left(x\middle\̲r̲i̲g̲h̲t̲)	brace:0,phantom:0
+hspace_missing_unit	0	invalid	a\hspace{2}b=c	0		KaTeX parse error: Invalid size: '2' at position 10: a\hspace{2̲}b=c	brace:0,phantom:0
+hspace_malformed_decimal	0	invalid	a\hspace{1..2em}b=c	0		KaTeX parse error: Invalid size: '1.' at position 10: a\hspace{1̲.̲.2em}b=c	brace:0,phantom:0
+array_hline_inside_cell	1	invalid	\begin{array}{cc}a\hline&b\\c&d\end{array}	0		KaTeX parse error: \hline valid only within array environment	brace:0,phantom:0
+array_row_gap_bad_unit	1	invalid	\begin{array}{c}x\\[2banana]y\end{array}	0		KaTeX parse error: Invalid unit: 'ba' at position 20: …in{array}{c}x\\[̲2̲b̲a̲n̲a̲n̲a̲]̲y\end{array}	brace:0,phantom:0
+array_negative_row_gap	1	native_fallback	\begin{array}{c}x\\[-0.5em]y\end{array}	1	math:1,mi:2,mstyle:2,mtable:1,mtd:2,mtr:2	-	brace:0,phantom:0
+array_triple_vertical_rules	1	native_fallback	\begin{array}{c|||c}a&b\\c&d\end{array}	1	math:1,mi:4,mstyle:4,mtable:1,mtd:4,mtr:2	-	brace:0,phantom:0
+hspace_boundary_em	1	native_accept	x\hspace{20em}+1=2	1	math:1,mi:1,mn:2,mo:2,mrow:1,mspace:1	-	brace:0,phantom:0
+hspace_boundary_ex	1	native_accept	x\hspace{40ex}+1=2	1	math:1,mi:1,mn:2,mo:2,mrow:1,mspace:1	-	brace:0,phantom:0
+hspace_boundary_pt	1	native_accept	x\hspace{200pt}+1=2	1	math:1,mi:1,mn:2,mo:2,mrow:1,mspace:1	-	brace:0,phantom:0
+hspace_over_budget_em	0	native_fallback	a\hspace{20.01em}+b=c	1	math:1,mi:3,mo:2,mrow:1,mspace:1	-	brace:0,phantom:0
+hspace_over_budget_ex	0	native_fallback	a\hspace{40.01ex}+b=c	1	math:1,mi:3,mo:2,mrow:1,mspace:1	-	brace:0,phantom:0
+hspace_over_budget_pt	0	native_fallback	a\hspace{200.01pt}+b=c	1	math:1,mi:3,mo:2,mrow:1,mspace:1	-	brace:0,phantom:0
+array_row_gap_over_budget	1	native_fallback	\begin{array}{c}x\\[20.01em]y\end{array}	1	math:1,mi:2,mstyle:2,mtable:1,mtd:2,mtr:2	-	brace:0,phantom:0
+array_triple_horizontal_rules	1	native_fallback	\begin{array}{cc}\hline\hline\hline a&b\\c&d\end{array}	1	math:1,menclose:1,mi:4,mrow:1,mstyle:4,mtable:1,mtd:4,mtr:2	-	brace:0,phantom:0
+pure_vertical_phantom	1	native_accept	\vphantom{\frac{a}{b}}	1	math:1,mfrac:1,mi:2,mpadded:1,mphantom:1,mrow:1	-	brace:0,phantom:1
+pure_phantom	1	native_accept	\phantom{\frac{a}{b}}	1	math:1,mfrac:1,mi:2,mphantom:1,mrow:1	-	brace:0,phantom:1
+pure_hspace	0	native_fallback	\hspace{2em}	1	math:1,mrow:1,mspace:1	-	brace:0,phantom:0

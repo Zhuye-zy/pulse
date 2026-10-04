@@ -89,7 +89,7 @@ std::wstring Grouped(size_t value) {
     return out;
 }
 
-bool Zh() { return pulse::l10n::effective_language() == pulse::l10n::Language::ZhCN; }
+bool Zh() { return pulse::l10n::IsChinese(); }
 
 D2D1_RECT_F R(float l, float t, float r, float b) { return D2D1::RectF(l, t, r, b); }
 
@@ -205,10 +205,10 @@ std::vector<std::wstring> TableView::StatusParts(uint32_t encoding) const {
     const bool zh = Zh();
     parts.push_back(s->detail == L"tab" ? L"TSV" : L"CSV");
     std::wstring detail;
-    if (s->detail == L"tab") detail = zh ? L"Tab \x5206\x9694" : L"Tab";
-    else if (s->detail == L"semicolon") detail = zh ? L"\x5206\x53F7" : L"Semicolon";
-    else if (s->detail == L"pipe") detail = zh ? L"\x7AD6\x7EBF" : L"Pipe";
-    else detail = zh ? L"\x9017\x53F7" : L"Comma";
+    if (s->detail == L"tab") detail = pulse::l10n::Pick(L"Tab \x5206\x9694", L"Tab");
+    else if (s->detail == L"semicolon") detail = pulse::l10n::Pick(L"\x5206\x53F7", L"Semicolon");
+    else if (s->detail == L"pipe") detail = pulse::l10n::Pick(L"\x7AD6\x7EBF", L"Pipe");
+    else detail = pulse::l10n::Pick(L"\x9017\x53F7", L"Comma");
     std::wstring name;
     switch (static_cast<ipc::PreviewTextEncoding>(encoding)) {
     case ipc::PreviewTextEncoding::Utf8: name = L"UTF-8"; break;
@@ -230,9 +230,9 @@ std::vector<std::wstring> TableView::StatusParts(uint32_t encoding) const {
     if (!name.empty()) detail += L" \x00B7 " + name;
     parts.push_back(std::move(detail));
     const std::wstring rows = Grouped(BodyRows()), cols = Grouped(s->cols);
-    std::wstring size = zh ? rows + L" \x884C \x00D7 " + cols + L" \x5217"
+    std::wstring size = zh ? rows + pulse::l10n::Cn(L" \x884C \x00D7 ") + cols + pulse::l10n::Cn(L" \x5217")
                            : rows + L" rows \x00D7 " + cols + L" columns";
-    if (s->truncated) size = zh ? L"\x524D " + size + L"\xFF08\x5DF2\x622A\x65AD\xFF09"
+    if (s->truncated) size = zh ? pulse::l10n::Cn(L"\x524D ") + size + pulse::l10n::Cn(L"\xFF08\x5DF2\x622A\x65AD\xFF09")
                                 : L"first " + size + L" (truncated)";
     parts.push_back(std::move(size));
     return parts;
@@ -397,7 +397,7 @@ void TableView::Draw(ID2D1DeviceContext* dc, IDWriteFactory2* factory, const D2D
 
     dc->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
     if (s.cols == 0 || s.cells.empty()) {
-        const std::wstring empty = Zh() ? L"\x7A7A\x5DE5\x4F5C\x8868" : L"Empty sheet";
+        const std::wstring empty = pulse::l10n::Pick(L"\x7A7A\x5DE5\x4F5C\x8868", L"Empty sheet");
         text_->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
         b->SetColor(theme.text_secondary);
         dc->DrawTextW(empty.data(), static_cast<UINT32>(empty.size()), text_.Get(), g.grid, b);
@@ -560,9 +560,9 @@ void TableView::Draw(ID2D1DeviceContext* dc, IDWriteFactory2* factory, const D2D
         dc->DrawLine(D2D1::Point2F(g.tabs.left, g.tabs.top + 0.5f), D2D1::Point2F(g.tabs.right, g.tabs.top + 0.5f), b, 1.0f);
         // Size on the right.
         const bool zh = Zh();
-        std::wstring size = zh ? Grouped(BodyRows()) + L" \x884C \x00D7 " + Grouped(s.cols) + L" \x5217"
+        std::wstring size = zh ? Grouped(BodyRows()) + pulse::l10n::Cn(L" \x884C \x00D7 ") + Grouped(s.cols) + pulse::l10n::Cn(L" \x5217")
                                : Grouped(BodyRows()) + L" rows \x00D7 " + Grouped(s.cols) + L" columns";
-        if (s.truncated) size += zh ? L"\xFF08\x5DF2\x622A\x65AD\xFF09" : L" (truncated)";
+        if (s.truncated) size += pulse::l10n::Pick(L"\xFF08\x5DF2\x622A\x65AD\xFF09", L" (truncated)");
         WrlPtr<IDWriteTextLayout> size_layout;
         factory->CreateTextLayout(size.data(), static_cast<UINT32>(size.size()), small_.Get(), 4000.0f, 30.0f * k, &size_layout);
         float size_w = 0.0f;

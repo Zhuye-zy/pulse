@@ -1,6 +1,8 @@
 #include "../common/windows_compat.h"
 #include "../common/localization.h"
 #include "settings_controller.h"
+#include "blank_pane_click.h"
+#include "default_file_manager.h"
 #include "../index/index_client.h"
 #include "../index/network_agent_client.h"
 
@@ -247,14 +249,19 @@ void SettingsController::Apply(SettingsEffect effect) const {
 }
 
 void SettingsController::SaveAndApply(SettingsEffect effect) const {
-    prefs_->Save();
+    if (!prefs_->Save() && ui_.show_error)
+        ui_.show_error(l10n::HantText(prefs_->load_failed ?
+            l10n::Pick(L"原设置未能读取，已阻止覆盖。请关闭后重试打开 Pulse。",
+                L"The original settings could not be read. Saving is blocked to protect them. Restart Pulse to retry.") :
+            l10n::Pick(L"设置未能保存，重启后可能恢复原值。",
+                L"Settings could not be saved and may revert after a restart.")));
     Apply(effect);
 }
 
 void SettingsController::WindowEffect(std::wstring_view effect_id) {
     if (!compat::ModernWindows() && effect_id != L"none") return;
     static constexpr std::wstring_view ids[] = {
-        L"none", L"acrylic-material", L"mica", L"mica-alt", L"frosted-glass"
+        L"none", L"acrylic-material", L"mica", L"mica-alt"
     };
     if (!prefs_ || prefs_->window_effect == effect_id ||
         std::find(std::begin(ids), std::end(ids), effect_id) == std::end(ids)) return;
@@ -302,9 +309,21 @@ void SettingsController::StartupOpen(int index) {
         SaveAndApply(SettingsEffect::None);
 }
 
+void SettingsController::NotifyIcon(int index) {
+    static constexpr int values[] = {0, 1, 2};
+    if (prefs_ && SelectValue(index, values, prefs_->notify_icon_mode))
+        SaveAndApply(SettingsEffect::TrayVisibility);
+}
+
 void SettingsController::NewTabOpen(int index) {
     static constexpr int values[] = {0, 1};
     if (prefs_ && SelectValue(index, values, prefs_->new_tab_open))
+        SaveAndApply(SettingsEffect::None);
+}
+
+void SettingsController::BlankClick(int index) {
+    static constexpr int values[] = {kBlankClickOff, kBlankClickBack, kBlankClickUp};
+    if (prefs_ && SelectValue(index, values, prefs_->blank_click_action))
         SaveAndApply(SettingsEffect::None);
 }
 
@@ -330,6 +349,12 @@ void SettingsController::TextRendering(int index) {
         SaveAndApply(SettingsEffect::TextRendering);
 }
 
+void SettingsController::UiFontSize(int index) {
+    static constexpr int values[] = {90, 100, 112, 125};
+    if (prefs_ && SelectValue(index, values, prefs_->ui_font_scale))
+        SaveAndApply(SettingsEffect::UiFontSize);
+}
+
 void SettingsController::TrayIconSize(int index) {
     static constexpr int values[] = {40, 48, 56};
     if (prefs_ && SelectValue(index, values, prefs_->tray_icon_size))
@@ -342,7 +367,7 @@ bool SettingsController::SliderValue(int which, int value) {
     if (!prefs_ || which < 0 || which > 1) return false;
     const bool snap = GetKeyState(VK_SHIFT) >= 0;
     int& target = which == 0 ? prefs_->wallpaper_look : prefs_->wallpaper_blur;
-    value = std::clamp(value, 0, which == 0 ? 100 : 40);
+    value = std::clamp(value, 0, which == 0 ? 90 : 40);
     if (snap) {
         static constexpr int kLook[] = {25, 50, 75};
         static constexpr int kBlur[] = {14, 28};
@@ -353,9 +378,7 @@ bool SettingsController::SliderValue(int which, int value) {
         }
     }
     if (target == value) return false;
-    const bool clear_transition = which == 0 && ((target == 100) != (value == 100));
     target = value;
-    if (clear_transition) Apply(SettingsEffect::WindowMaterial);
     return true;
 }
 
@@ -366,7 +389,7 @@ void SettingsController::EndSlider() {
 }
 
 void SettingsController::Language(std::wstring_view language_id) {
-    static constexpr std::wstring_view ids[] = {L"system", L"zh-CN", L"en-US"};
+    static constexpr std::wstring_view ids[] = {L"system", L"zh-CN", L"zh-TW", L"en-US"};
     if (!prefs_ || prefs_->language == language_id ||
         std::find(std::begin(ids), std::end(ids), language_id) == std::end(ids)) return;
     prefs_->language.assign(language_id);
@@ -377,8 +400,11 @@ void SettingsController::Wallpaper(int action) {
     if (!prefs_ || !ui_.apply_effects) return;
     std::wstring path;
     if (action == 0 && ui_.pick_image && ui_.pick_image(path)) {
-        if (!path.empty() && prefs_->StoreBackgroundImage(path))
-            SaveAndApply(SettingsEffect::WindowMaterial);
+        if (!path.empty()) {
+            if (prefs_->StoreBackgroundImage(path)) Apply(SettingsEffect::WindowMaterial);
+            else if (ui_.show_error) ui_.show_error(l10n::HantText(l10n::Pick(
+                L"新壁纸未能保存，已保留原壁纸。", L"The new wallpaper could not be saved. The previous wallpaper was kept.")));
+        }
     } else if (action == 1 && !prefs_->background_image.empty()) {
         prefs_->ClearBackgroundImage();
         SaveAndApply(SettingsEffect::WindowMaterial);
@@ -437,6 +463,75 @@ std::wstring SettingsController::GlobalSearchHotkeyText() const {
     return text;
 }
 
+bool SettingsController::IntegrationCanRestore() const noexcept {
+    return prefs_ && (prefs_->integration_enabled || prefs_->open_folders_in_pulse ||
+        prefs_->take_over_win_e || prefs_->take_over_this_pc || prefs_->integration_residual ||
+        IntegrationCanRetry());
+}
+
+int SettingsController::IntegrationState() const noexcept {
+    if (!prefs_) return 0;
+    if (IntegrationCanRetry()) return 3;
+    const auto& p = *prefs_;
+    if (p.integration_incomplete) return 2;
+    const bool active = p.open_folders_in_pulse || p.take_over_win_e || p.take_over_this_pc ||
+        p.integration_residual;
+    if (!p.integration_enabled) return active ? 2 : 0;
+    if (p.open_folders_in_pulse != p.integration_folders ||
+        p.take_over_win_e != p.integration_win_e || p.take_over_this_pc != p.integration_this_pc)
+        return 2;
+    return active || p.take_over_explorer_windows ? 1 : 0;
+}
+
+std::wstring SettingsController::IntegrationSummary() const {
+    // Only problem details are surfaced; the status pill and checkboxes describe healthy states.
+    if (!prefs_) return {};
+    if (IntegrationCanRetry()) {
+        std::wstring message;
+        if (!integration_error_.empty())
+            message = std::wstring(l10n::Pick(L"没能设置：", L"Could not apply: ")) + integration_error_ +
+                l10n::Pick(L"。可能被安全软件拦截，可以重试。", L". Security software may have blocked it; try again.");
+        if (integration_save_failed_) {
+            if (!message.empty()) message += L" ";
+            message += l10n::Pick(L"你的选择没能保存，重启后可能变回原来的设置。",
+                L"Your choices could not be saved and may revert after a restart.");
+        }
+        return message;
+    }
+    if (IntegrationState() == 2) return l10n::Get(l10n::StringId::IntegrationDriftDesc);
+    return {};
+}
+
+void SettingsController::IntegrationAction(int index) {
+    if (!prefs_ || index < 0 || index > 6) return;
+    if (ui_.integration_changing) ui_.integration_changing();
+    auto& p = *prefs_;
+    p.integration_configured = true;
+    if (index == 0) p.integration_enabled = !p.integration_enabled;
+    else if (index == 1) p.integration_folders = !p.integration_folders;
+    else if (index == 2) p.integration_win_e = !p.integration_win_e;
+    else if (index == 3) p.integration_this_pc = !p.integration_this_pc;
+    else if (index == 4) p.take_over_explorer_windows = !p.take_over_explorer_windows;
+    else if (index == 6) p.integration_enabled = false;
+    // Editing a disabled integration only changes the saved selection.
+    if (p.integration_enabled || index == 0 || index == 5 || index == 6) {
+        integration_error_.clear();
+        auto failed = [&](const wchar_t* label) {
+            if (!integration_error_.empty()) integration_error_ += l10n::Pick(L"、", L", ");
+            integration_error_ += label;
+        };
+        if (!p.ApplyFolderOpen(p.integration_enabled && p.integration_folders))
+            failed(l10n::Pick(L"文件夹和磁盘", L"Folders and drives"));
+        if (!p.ApplyWinE(p.integration_enabled && p.integration_win_e))
+            failed(L"Win + E");
+        if (!ApplyThisPcOpen(p, p.integration_enabled && p.integration_this_pc))
+            failed(l10n::Pick(L"桌面上的「此电脑」", L"This PC on the desktop"));
+    }
+    integration_save_failed_ = !p.Save();
+    if (ui_.integration_changed) ui_.integration_changed();
+    Apply(SettingsEffect::None);
+}
+
 void SettingsController::ToggleUi(int index) {
     if (!prefs_ || !context_) return;
     if (index == 1) {
@@ -446,9 +541,7 @@ void SettingsController::ToggleUi(int index) {
         prefs_->keep_running_on_close = !prefs_->keep_running_on_close;
         SaveAndApply(SettingsEffect::TrayVisibility);
     } else if (index == 3) {
-        if (!prefs_->ApplyFolderOpen(!prefs_->open_folders_in_pulse) && ui_.show_error)
-            ui_.show_error(l10n::Get(l10n::StringId::SettingsShellRegisterFailed));
-        SaveAndApply(SettingsEffect::None);
+        IntegrationAction(1);
     } else if (index == 4) {
         prefs_->show_status_performance = !prefs_->show_status_performance;
         SaveAndApply(SettingsEffect::StatusBarPerformance);
@@ -462,15 +555,21 @@ void SettingsController::ToggleUi(int index) {
         prefs_->show_pinned_tab_names = !prefs_->show_pinned_tab_names;
         SaveAndApply(SettingsEffect::None);
     } else if (index == 20) {
-        if (!prefs_->ApplyWinE(!prefs_->take_over_win_e) && ui_.show_error)
-            ui_.show_error(l10n::Get(l10n::StringId::SettingsShellRegisterFailed));
+        IntegrationAction(2);
+    } else if (index == 28) {
+        IntegrationAction(0);
+    } else if (index == 29) {
+        IntegrationAction(3);
+    } else if (index == 30) {
+        IntegrationAction(4);
+    } else if (index == 31) {
+        // app_updates.cpp reads it on every tick; turning it back on checks right away
+        // because the skipped interval has already elapsed.
+        prefs_->auto_check_updates = !prefs_->auto_check_updates;
         SaveAndApply(SettingsEffect::None);
     } else if (index == 21) {
         // shell_tag_menu.cpp installs/removes the HKCU verbs on the next UI tick.
         prefs_->shell_tag_menu = !prefs_->shell_tag_menu;
-        SaveAndApply(SettingsEffect::None);
-    } else if (index == 7) {
-        prefs_->blank_click_go_back = !prefs_->blank_click_go_back;
         SaveAndApply(SettingsEffect::None);
     } else if (index == 8) {
         prefs_->change_tracking_enabled = !prefs_->change_tracking_enabled;
@@ -490,6 +589,9 @@ void SettingsController::ToggleUi(int index) {
     } else if (index == 22) {
         prefs_->list_tag_name_color = !prefs_->list_tag_name_color;
         SaveAndApply(SettingsEffect::ListStyle);
+    } else if (index == 33) {
+        prefs_->list_selection_outline = !prefs_->list_selection_outline;
+        SaveAndApply(SettingsEffect::ListStyle);
     } else if (index == 23) {
         prefs_->vertical_tabs = !prefs_->vertical_tabs;
         SaveAndApply(SettingsEffect::None);
@@ -498,6 +600,15 @@ void SettingsController::ToggleUi(int index) {
         SaveAndApply(SettingsEffect::None);
     } else if (index == 25) {
         prefs_->tips_seen = 0;
+        SaveAndApply(SettingsEffect::None);
+    } else if (index == 26) {
+        prefs_->close_window_with_last_tab = !prefs_->close_window_with_last_tab;
+        SaveAndApply(SettingsEffect::None);
+    } else if (index == 32) {
+        prefs_->confirm_recycle_delete = !prefs_->confirm_recycle_delete;
+        SaveAndApply(SettingsEffect::None);
+    } else if (index == 27) {
+        prefs_->start_in_tray = !prefs_->start_in_tray;
         SaveAndApply(SettingsEffect::None);
     } else if (index == 15) {
         prefs_->global_search_enabled = !prefs_->global_search_enabled;
@@ -534,6 +645,8 @@ void SettingsController::ToggleUi(int index) {
         const auto& seen = context_->seen[item];
         const bool enabled = context_->ItemEnabled(seen.key, seen.category, seen.from_com);
         context_->SetItemEnabled(seen.key, !enabled);
+        if (!enabled)
+            context_->SetGroupEnabled(ipc::GroupOf(seen.category), true);
         context_->Save();
     }
 }

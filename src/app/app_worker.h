@@ -1,9 +1,12 @@
 // app_worker.h — Async enumeration/sort worker with generation tracking.
 #pragma once
 #include "../fs/fs_enum.h"
+#include "io_task_queue.h"
 #include "../fs/fs_recycle.h"
 #include "../fs/fs_snapshot.h"
 #include "../ui/ui_renderer.h"
+#include "entry_sort.h"
+#include <memory>
 #include <windows.h>
 #include <atomic>
 #include <condition_variable>
@@ -28,6 +31,8 @@ struct WorkItem {
     std::vector<std::wstring> paths;
     int group_by = 0;
     std::vector<uint64_t> display_times;
+    // Known folder totals for a Size sort (#58); null sorts folders as 0 bytes.
+    std::shared_ptr<const FolderSizeLookup> folder_sizes;
 };
 
 struct WorkResult {
@@ -55,7 +60,8 @@ public:
 
     // Enqueue a refresh for path. Returns the generation assigned.
     uint64_t Refresh(const std::wstring& path, ui::SortColumn col, ui::SortDirection dir,
-                     int group_by = 0);
+                     int group_by = 0,
+                     std::shared_ptr<const FolderSizeLookup> folder_sizes = nullptr);
 
     uint64_t LoadPaths(const std::wstring& view_path, std::vector<std::wstring> paths,
                        ui::SortColumn col, ui::SortDirection dir,
@@ -64,6 +70,7 @@ public:
                        int group_by = 0);
 
     void EnqueueIo(std::function<void()> task);
+    void EnqueueSerialIo(std::function<void()> task);
 
 private:
     void WorkerThread();
@@ -74,7 +81,7 @@ private:
     std::mutex mutex_;
     std::condition_variable cv_;
     std::queue<WorkItem> queue_;
-    std::queue<std::function<void()>> io_queue_;
+    IoTaskQueue io_queue_;
     std::atomic<bool> running_{false};
     bool stopped_ = false;
     uint64_t global_gen_ = 0;

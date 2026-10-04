@@ -1,8 +1,11 @@
 // places.cpp — Persist workspaces / tags / network pins + NTFS ADS.
 #include "places.h"
+#include "tag_ads_sync.h"
+#include "../common/config_json.h"
 #include "session.h"
 #include "../fs/fs_enum.h"
 #include "../common/json_utils.h"
+#include "../common/localization.h"
 #include "../common/utf8_file.h"
 #include <algorithm>
 #include <sstream>
@@ -188,7 +191,7 @@ bool PlacesCatalog::SaveTagFile(const std::vector<ColorTag>& snapshot) {
 }
 
 void PlacesCatalog::QueueTagSave() const {
-    if (!persist) return;
+    if (!persist || load_failed) return;
     {
         std::lock_guard<std::mutex> lock(tag_save_mutex_);
         pending_tag_save_ = tags;
@@ -230,20 +233,20 @@ void PlacesCatalog::StopTagWriter() {
 
 void PlacesCatalog::EnsureDefaults() {
     if (!tags.empty()) return;
-    struct Def { const wchar_t* id; const wchar_t* name; uint32_t rgb; };
+    struct Def { const wchar_t* id; const wchar_t* name; const wchar_t* english; uint32_t rgb; };
     static const Def kDefs[] = {
-        { L"finder-red", L"紧急修补", 0xEF4444 },
-        { L"finder-orange", L"设计审阅", 0xF59E0B },
-        { L"finder-green", L"进行中", 0x22C55E },
-        { L"finder-yellow", L"待确认", 0xEAB308 },
-        { L"finder-purple", L"灵感参考", 0xA855F7 },
-        { L"finder-blue", L"参考资料", 0x3B82F6 },
-        { L"finder-gray", L"归档", 0x94A3B8 },
+        { L"finder-red", L"紧急修补", L"Urgent", 0xEF4444 },
+        { L"finder-orange", L"设计审阅", L"Design review", 0xF59E0B },
+        { L"finder-green", L"进行中", L"In progress", 0x22C55E },
+        { L"finder-yellow", L"待确认", L"Pending", 0xEAB308 },
+        { L"finder-purple", L"灵感参考", L"Inspiration", 0xA855F7 },
+        { L"finder-blue", L"参考资料", L"Reference", 0x3B82F6 },
+        { L"finder-gray", L"归档", L"Archive", 0x94A3B8 },
     };
     for (const auto& d : kDefs) {
         ColorTag t;
         t.id = d.id;
-        t.name = d.name;
+        t.name = l10n::Pick(d.name, d.english);  // seeded once in the UI language, then user data
         t.rgb = d.rgb;
         tags.push_back(std::move(t));
     }
@@ -251,6 +254,23 @@ void PlacesCatalog::EnsureDefaults() {
 }
 
 bool PlacesCatalog::Load() {
+    StopPlacesWriter();
+    StopTagWriter();
+    const std::wstring dir = GetPulseDataDir();
+    std::wstring json, tag_json;
+    auto read = [&](const wchar_t* name, std::wstring& text) {
+        const std::wstring file = dir + name;
+        if (GetFileAttributesW(file.c_str()) == INVALID_FILE_ATTRIBUTES) {
+            const DWORD error = GetLastError();
+            if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) return true;
+        }
+        return ReadUtf8File(file, text) && pulse::json::ValidConfigObject(text, true);
+    };
+    if (dir.empty() || !read(L"\\places.json", json) || !read(L"\\tags.json", tag_json)) {
+        load_failed = true;
+        return false;
+    }
+    load_failed = false;
     workspaces.clear();
     tags.clear();
     networks.clear();
@@ -260,95 +280,52 @@ bool PlacesCatalog::Load() {
     recent_items.clear();
     starred_index_.clear();
     active_workspace = -1;
-    std::wstring dir = GetPulseDataDir();
-    if (dir.empty()) { EnsureDefaults(); return false; }
-    std::wstring json;
-    ReadUtf8File(dir + L"\\places.json", json);
     const bool places_loaded = !json.empty();
 
     active_workspace = pulse::json::ExtractInt(json, L"active_workspace");
     if (json.find(L"\"active_workspace\"") == std::wstring::npos) active_workspace = -1;
 
-    size_t pos = json.find(L"\"workspaces\"");
-    if (pos != std::wstring::npos) {
-        pos = json.find(L'[', pos);
-        if (pos != std::wstring::npos) {
-            ++pos;
-            while (pos < json.size() && json[pos] != L']') {
-                size_t obj = json.find(L'{', pos);
-                if (obj == std::wstring::npos || obj > json.find(L']', pos)) break;
-                size_t end = json.find(L'}', obj);
-                if (end == std::wstring::npos) break;
-                std::wstring block = json.substr(obj, end - obj + 1);
-                Workspace w;
-                w.name = pulse::json::ExtractString(block, L"name");
-                w.root = pulse::json::ExtractString(block, L"root");
-                w.layout = pulse::json::ExtractInt(block, L"layout");
-                w.pane_paths = pulse::json::ExtractStringArray(block, L"panes");
-                for (const auto& value : pulse::json::ExtractStringArray(block, L"views"))
-                    w.pane_views.push_back(ui::ParseViewMode(value));
-                while (w.pane_views.size() < w.pane_paths.size())
-                    w.pane_views.push_back(ui::ViewMode::Details);
-                auto freq = pulse::json::ExtractStringArray(block, L"freq");
-                for (const auto& row : freq) {
-                    auto tab = row.find(L'\t');
-                    std::pair<std::wstring, int> hit;
-                    if (tab == std::wstring::npos) {
-                        hit.first = row;
-                        hit.second = 1;
-                    } else {
-                        hit.first = row.substr(0, tab);
-                        hit.second = _wtoi(row.c_str() + tab + 1);
-                    }
-                    if (!hit.first.empty()) w.frequent.push_back(std::move(hit));
-                }
-                if (!w.root.empty()) workspaces.push_back(std::move(w));
-                pos = end + 1;
+    for (const auto& block : ExtractObjectArray(json, L"workspaces")) {
+        Workspace w;
+        w.name = pulse::json::ExtractString(block, L"name");
+        w.root = pulse::json::ExtractString(block, L"root");
+        w.layout = pulse::json::ExtractInt(block, L"layout");
+        w.pane_paths = pulse::json::ExtractStringArray(block, L"panes");
+        for (const auto& value : pulse::json::ExtractStringArray(block, L"views"))
+            w.pane_views.push_back(ui::ParseViewMode(value));
+        while (w.pane_views.size() < w.pane_paths.size())
+            w.pane_views.push_back(ui::ViewMode::Details);
+        auto freq = pulse::json::ExtractStringArray(block, L"freq");
+        for (const auto& row : freq) {
+            auto tab = row.find(L'\t');
+            std::pair<std::wstring, int> hit;
+            if (tab == std::wstring::npos) {
+                hit.first = row;
+                hit.second = 1;
+            } else {
+                hit.first = row.substr(0, tab);
+                hit.second = _wtoi(row.c_str() + tab + 1);
             }
+            if (!hit.first.empty()) w.frequent.push_back(std::move(hit));
         }
+        if (!w.root.empty()) workspaces.push_back(std::move(w));
     }
 
-    pos = json.find(L"\"tags\"");
-    if (pos != std::wstring::npos) {
-        pos = json.find(L'[', pos);
-        if (pos != std::wstring::npos) {
-            ++pos;
-            while (pos < json.size() && json[pos] != L']') {
-                size_t obj = json.find(L'{', pos);
-                if (obj == std::wstring::npos || obj > json.find(L']', pos)) break;
-                size_t end = json.find(L'}', obj);
-                if (end == std::wstring::npos) break;
-                std::wstring block = json.substr(obj, end - obj + 1);
-                ColorTag t;
-                t.id = pulse::json::ExtractString(block, L"id");
-                if (t.id.empty()) t.id = NewTagId();
-                t.name = pulse::json::ExtractString(block, L"name");
-                t.rgb = ExtractRgb(block);
-                t.paths = pulse::json::ExtractStringArray(block, L"paths");
-                if (!t.name.empty()) tags.push_back(std::move(t));
-                pos = end + 1;
-            }
-        }
+    for (const auto& block : ExtractObjectArray(json, L"tags")) {
+        ColorTag t;
+        t.id = pulse::json::ExtractString(block, L"id");
+        if (t.id.empty()) t.id = NewTagId();
+        t.name = pulse::json::ExtractString(block, L"name");
+        t.rgb = ExtractRgb(block);
+        t.paths = pulse::json::ExtractStringArray(block, L"paths");
+        if (!t.name.empty()) tags.push_back(std::move(t));
     }
 
-    pos = json.find(L"\"networks\"");
-    if (pos != std::wstring::npos) {
-        pos = json.find(L'[', pos);
-        if (pos != std::wstring::npos) {
-            ++pos;
-            while (pos < json.size() && json[pos] != L']') {
-                size_t obj = json.find(L'{', pos);
-                if (obj == std::wstring::npos || obj > json.find(L']', pos)) break;
-                size_t end = json.find(L'}', obj);
-                if (end == std::wstring::npos) break;
-                std::wstring block = json.substr(obj, end - obj + 1);
-                NetworkPlace n;
-                n.name = pulse::json::ExtractString(block, L"name");
-                n.unc = pulse::json::ExtractString(block, L"unc");
-                if (!n.unc.empty()) networks.push_back(std::move(n));
-                pos = end + 1;
-            }
-        }
+    for (const auto& block : ExtractObjectArray(json, L"networks")) {
+        NetworkPlace n;
+        n.name = pulse::json::ExtractString(block, L"name");
+        n.unc = pulse::json::ExtractString(block, L"unc");
+        if (!n.unc.empty()) networks.push_back(std::move(n));
     }
 
     for (const auto& path : pulse::json::ExtractStringArray(json, L"quick_access_paths")) {
@@ -407,27 +384,15 @@ bool PlacesCatalog::Load() {
         [](const StarredItem& item) { return item.kind == PlaceItemKind::Folder; });
 
     bool tags_loaded = false;
-    std::wstring tag_json;
-    if (ReadUtf8File(dir + L"\\tags.json", tag_json) && !tag_json.empty()) {
+    if (!tag_json.empty()) {
         std::vector<ColorTag> loaded;
-        size_t tag_pos = tag_json.find(L"\"tags\"");
-        if (tag_pos != std::wstring::npos) tag_pos = tag_json.find(L'[', tag_pos);
-        if (tag_pos != std::wstring::npos) {
-            ++tag_pos;
-            while (tag_pos < tag_json.size() && tag_json[tag_pos] != L']') {
-                const size_t object = tag_json.find(L'{', tag_pos);
-                if (object == std::wstring::npos || object > tag_json.find(L']', tag_pos)) break;
-                const size_t end = tag_json.find(L'}', object);
-                if (end == std::wstring::npos) break;
-                const std::wstring block = tag_json.substr(object, end - object + 1);
-                ColorTag tag;
-                tag.id = pulse::json::ExtractString(block, L"id");
-                tag.name = pulse::json::ExtractString(block, L"name");
-                tag.rgb = ExtractRgb(block);
-                tag.paths = pulse::json::ExtractStringArray(block, L"paths");
-                if (!tag.id.empty() && !tag.name.empty()) loaded.push_back(std::move(tag));
-                tag_pos = end + 1;
-            }
+        for (const auto& block : ExtractObjectArray(tag_json, L"tags")) {
+            ColorTag tag;
+            tag.id = pulse::json::ExtractString(block, L"id");
+            tag.name = pulse::json::ExtractString(block, L"name");
+            tag.rgb = ExtractRgb(block);
+            tag.paths = pulse::json::ExtractStringArray(block, L"paths");
+            if (!tag.id.empty() && !tag.name.empty()) loaded.push_back(std::move(tag));
         }
         if (!loaded.empty()) {
             tags = std::move(loaded);
@@ -477,7 +442,7 @@ void PlacesCatalog::MarkPlacesDirty() const {
 }
 
 void PlacesCatalog::QueuePlacesSave() const {
-    if (!persist) return;
+    if (!persist || load_failed) return;
     auto snapshot = CaptureSaveSnapshot();
     const uint64_t revision = places_save_revision_.load(std::memory_order_acquire);
     {
@@ -537,6 +502,7 @@ void PlacesCatalog::StopPlacesWriter() {
 
 bool PlacesCatalog::Save() const {
     if (!persist) return true;
+    if (load_failed) return false;
     const SaveSnapshot snapshot = CaptureSaveSnapshot();
     std::lock_guard<std::mutex> lock(places_save_io_mutex_);
     const bool saved = SaveSnapshotFile(snapshot);
@@ -1389,6 +1355,7 @@ void PlacesCatalog::RemoveAssignments(const std::wstring& path, bool include_des
 void PlacesCatalog::MergeAdsRecords(const std::wstring& path,
                                     const std::vector<TagAdsRecord>& records,
                                     const std::vector<std::wstring>& legacy_names) {
+    if (HasPendingTagAds(path)) return;
     const std::wstring n = Norm(path);
     if (n.empty() || fs::IsVirtualPath(n)) return;
     if (!records.empty()) {
@@ -1407,7 +1374,7 @@ void PlacesCatalog::MergeAdsRecords(const std::wstring& path,
                 if (index < 0) {
                     ColorTag tag;
                     tag.id = record.id.empty() ? NewTagId() : record.id;
-                    tag.name = imported_name.empty() ? L"导入的标签" : imported_name;
+                    tag.name = imported_name.empty() ? std::wstring(l10n::Pick(L"导入的标签", L"Imported tag")) : imported_name;
                     tag.rgb = record.rgb;
                     tags.push_back(std::move(tag));
                     index = static_cast<int>(tags.size()) - 1;
@@ -1455,8 +1422,9 @@ bool WriteTagAdsV2(const std::wstring& path, const std::vector<TagAdsRecord>& ta
     std::wstring n = Norm(path);
     if (n.empty() || fs::IsVirtualPath(n)) return false;
     if (tags.empty()) {
-        DeleteFileW((n + kAdsSuffix).c_str());
-        return true;
+        if (DeleteFileW((n + kAdsSuffix).c_str())) return true;
+        const DWORD error = GetLastError();
+        return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
     }
     std::wstring payload = L"PULSE_TAGS_V2\r\n";
     for (const auto& tag : tags) {

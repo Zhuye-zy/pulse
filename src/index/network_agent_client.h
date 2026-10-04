@@ -32,6 +32,8 @@ public:
     void Rebuild(const std::wstring& path = {});
 
 private:
+    friend struct NetworkAgentClientTestAccess;
+    std::wstring pipe_name_ = agent::kPipeName;
     bool EnsureAgent();
     bool OpenPipe(HANDLE& pipe);
     bool Request(uint32_t type, uint32_t id, const std::vector<uint8_t>& payload,

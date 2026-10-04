@@ -1,12 +1,15 @@
 // app_ops_ui.h — Delete/tray/paste/conflict/recycle operations UI.
 #pragma once
 #include "app_runtime.h"
+#include "../ui/confirm_dialog.h"
 
 namespace pulse {
 bool SubmitWithConflictResolution(AppState& s, ops::OpRequest request);
 void ReleaseTrayBatch(AppState& s, size_t idx);
 void PasteIntoCurrent(AppState& s);
 void DeleteSelected(AppState& s, bool permanent);
+// Confirmation shown before Delete moves items to the Recycle Bin (opt-in setting).
+ui::ConfirmDialogSpec BuildRecycleDeleteConfirm(const std::vector<std::wstring>& paths);
 void RestoreSelected(AppState& s);
 // Restores every listed recycle-bin item (the filtered view when a filter is on).
 void RestoreAllRecycle(AppState& s);

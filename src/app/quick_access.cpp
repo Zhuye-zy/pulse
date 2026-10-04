@@ -106,7 +106,7 @@ void ShowQuickAccessAddMenu(AppState& s, POINT point) {
         s.places.SetQuickAccessPinned({here}, true);
     } else if (command == kChoose) {
         std::wstring picked;
-        if (!PickFolder(s.hwnd, picked,
+        if (!PickFolder(s, picked,
                         l10n::Get(l10n::StringId::QuickAccessChooseFolder).c_str()) ||
             picked.empty())
             return;

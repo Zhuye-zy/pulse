@@ -34,6 +34,7 @@
 #include "app_prefs.h"
 #include "startup_location.h"
 #include "tray_reveal.h"
+#include "blank_pane_click.h"
 #include "details_column_menu.h"
 #include "entry_group.h"
 #include "context_menu.h"
@@ -61,10 +62,12 @@
 #include "../ui/drag_drop.h"
 #include "../ui/ui_renderer.h"
 #include "../ui/preview_footer_layout.h"
+#include "../ui/preview_format_catalog.h"
 #include "../ops/ops_manager.h"
 #include "../ops/clipboard.h"
 #include "../common/text_format.h"
 #include "../common/utf8_file.h"
+#include "locked_item_prompt.h"
 
 #include <windows.h>
 #include <shellapi.h>
@@ -156,6 +159,127 @@ struct FluentMenuTestPeer {
         menu.model_.SetItems({item});
         menu.model_.Layout(nullptr, scale, 400.0f * scale);
         return menu.InvokeAt(0, trailing_x) == 0 && menu.InvokeRow(0) == 0;
+    }
+    static void FillOverflowMenu(FluentMenu& menu, float scale, int count) {
+        menu.scale_ = scale;
+        std::vector<FluentMenuItem> items;
+        for (int i = 0; i < count; ++i) {
+            FluentMenuItem item;
+            item.command = 10 + i;
+            item.text = L"Context verb " + std::to_wstring(i + 1);
+            item.separator_after = i % 7 == 6;
+            items.push_back(std::move(item));
+        }
+        menu.model_.SetItems(std::move(items));
+        menu.model_.Layout(nullptr, scale, 300.0f * scale);
+    }
+    static bool CheckOverflowFit(float scale) {
+        FluentMenu menu;
+        FillOverflowMenu(menu, scale, 6);
+        menu.ApplyHeightLimit(400.0f * scale);
+        if (menu.overflow_ || menu.ArrowPx() != 0.0f ||
+            std::abs(menu.BodyHeightPx() - static_cast<float>(menu.model_.HeightPx())) > 0.01f)
+            return false;
+        FillOverflowMenu(menu, scale, 60);
+        menu.ApplyHeightLimit(400.0f * scale);
+        return menu.overflow_ && menu.Scrollable() && menu.ArrowPx() > 0.0f &&
+            std::abs(menu.BodyHeightPx() - 400.0f * scale) < 0.01f &&
+            menu.MaxScrollPx() > 0.0f && menu.scroll_y_ == 0.0f;
+    }
+    static bool CheckOverflowPointer(float scale) {
+        FluentMenu menu;
+        FillOverflowMenu(menu, scale, 60);
+        menu.ApplyHeightLimit(400.0f * scale);
+        menu.open_ = true;
+        const float arrow = menu.ArrowPx();
+        auto at = [&](float body_y) {
+            return POINT{ menu.kShadowMargin + 40, static_cast<LONG>(menu.kShadowMargin + body_y) };
+        };
+        bool ok = true;
+        menu.OnMouse(at(arrow * 0.5f), false);
+        ok = ok && menu.arrow_hover_ == -1 && menu.hover_row_ == -1;
+        menu.OnMouse(at(arrow + menu.model_.RowTopPx(0) + 2.0f), false);
+        ok = ok && menu.arrow_hover_ == 0 && menu.hover_row_ == 0;
+        const float bottom = menu.BodyHeightPx() - arrow * 0.5f;
+        menu.OnMouse(at(bottom), false);
+        ok = ok && menu.arrow_hover_ == 1 && menu.hover_row_ == -1;
+        menu.OnMouse(at(bottom), true); // a click pages down without invoking anything
+        const float paged = menu.scroll_y_;
+        ok = ok && paged > 0.0f && menu.result_ == 0 && menu.open_;
+        // Rows under the pointer account for the arrow strip and the offset.
+        menu.OnMouse(at(arrow + 2.0f), false);
+        ok = ok && menu.hover_row_ == menu.model_.HitTestRow(paged + 2.0f);
+        const float before = menu.scroll_y_;
+        menu.OnMouse(at(arrow * 0.5f), true); // and the top arrow pages back up
+        ok = ok && menu.scroll_y_ < before;
+        menu.open_ = false;
+        return ok;
+    }
+    static bool CheckOverflowKeysAndWheel(float scale) {
+        FluentMenu menu;
+        FillOverflowMenu(menu, scale, 60);
+        menu.ApplyHeightLimit(400.0f * scale);
+        menu.UpdateHover(59);
+        const float row_bottom = menu.model_.RowTopPx(59) + menu.model_.RowHeightPx();
+        if (std::abs(menu.scroll_y_ - menu.MaxScrollPx()) > 0.01f ||
+            row_bottom > menu.scroll_y_ + menu.ViewportPx() + 0.01f) return false;
+        menu.UpdateHover(0);
+        if (menu.scroll_y_ != 0.0f) return false;
+        if (menu.ScrollTo(-50.0f)) return false; // already at the top
+        if (!menu.ScrollTo(1.0e6f) || std::abs(menu.scroll_y_ - menu.MaxScrollPx()) > 0.01f)
+            return false;
+        return menu.hover_row_ == -1; // scrolling drops the stale hover
+    }
+    static bool CheckOverflowArrowHover(float scale) {
+        FluentMenu menu;
+        FillOverflowMenu(menu, scale, 60);
+        menu.ApplyHeightLimit(400.0f * scale);
+        menu.arrow_hover_ = 1;
+        menu.TickArrowScroll(); // the first tick only starts the clock
+        if (menu.scroll_y_ != 0.0f) return false;
+        menu.arrow_tick_ = std::chrono::steady_clock::now() - std::chrono::milliseconds(70);
+        menu.TickArrowScroll();
+        const float moved = menu.scroll_y_;
+        // One whole row per step: the next row's top lines up with the viewport.
+        if (std::abs(moved - menu.model_.RowTopPx(1)) > 0.01f)
+            return false;
+        menu.arrow_hover_ = 0; // the pointer left the arrow
+        menu.arrow_tick_ = std::chrono::steady_clock::now() - std::chrono::milliseconds(70);
+        menu.TickArrowScroll();
+        if (menu.scroll_y_ != moved) return false;
+        // Paging and stepping back always land on a row top.
+        menu.ScrollRows(5);
+        menu.ScrollRows(-1);
+        return std::abs(menu.scroll_y_ - menu.model_.RowTopPx(5)) < 0.01f;
+    }
+    static bool SaveOverflowSnapshot(HWND window, Compositor& compositor,
+                                     const std::wstring& path, bool dark, float scale) {
+        FluentMenu menu;
+        if (!menu.Create(window, &compositor, scale)) return false;
+        menu.SetTheme(dark, D2D1::ColorF(0x0078D4));
+        const wchar_t* verbs[] = { L"打开", L"在新标签页中打开", L"在新窗口中打开", L"打开方式",
+            L"用 Visual Studio Code 打开", L"使用 Microsoft Defender 扫描", L"授予访问权限",
+            L"还原以前的版本", L"发送到", L"剪切", L"复制", L"创建快捷方式", L"删除",
+            L"重命名", L"属性" };
+        const wchar_t* glyphs[] = { L"\xE8E5", L"\xE8A7", L"\xE8C8", L"\xE8C6", L"\xE77F",
+            L"\xE8AC", L"\xE74D", L"\xE946" };
+        std::vector<FluentMenuItem> items;
+        for (int i = 0; i < 15; ++i) {
+            FluentMenuItem item;
+            item.command = 10 + i;
+            item.text = verbs[i];
+            item.glyph = glyphs[i % 8];
+            item.separator_after = i == 3 || i == 8 || i == 11;
+            items.push_back(std::move(item));
+        }
+        // Lay out once to size the limit, then render the same rows mid-scroll
+        // with the pointer resting on the bottom arrow.
+        menu.model_.SetItems(items);
+        menu.model_.Layout(compositor.DwriteFactory(), scale, 0.0f);
+        menu.ApplyHeightLimit(360.0f * scale);
+        menu.ScrollRows(4);
+        menu.arrow_hover_ = 1;
+        return menu.overflow_ && menu.SaveDebugSnapshot(path.c_str(), std::move(items), -1);
     }
     static bool CheckSubmenuColors(float scale) {
         FluentMenu menu;
@@ -966,6 +1090,47 @@ void TestBlankPaneClickNavigation() {
                     L"sidebar: plus hit targets retain actions when group order changes");
             }
         }
+        {
+            // #80: the This PC title is a link, its chevron folds, and every other
+            // header stays a plain fold toggle.
+            auto vm = BuildVm(*state, false);
+            const int drives_id = static_cast<int>(app::SidebarSectionId::Drives);
+            bool drives_link = false, others_plain = true;
+            for (auto& group : vm.sidebar) {
+                group.collapsed = true;
+                if (group.id == drives_id) {
+                    drives_link = group.navigable;
+                    // The self-test state lists no volumes; an empty section is
+                    // not laid out, so give it one row to keep the header.
+                    group.hidden = false;
+                    if (group.items.empty()) {
+                        ui::SidebarItem drive;
+                        drive.label = L"C:";
+                        drive.path = L"C:\\";
+                        group.items.push_back(std::move(drive));
+                    }
+                } else {
+                    others_plain = others_plain && !group.navigable;
+                }
+            }
+            Check(drives_link && others_plain, L"sidebar: only the This PC header is a link");
+            const auto sidebar = state->renderer.SidebarRect(1000, 700);
+            bool title_link = false, chevron_folds = false, others_fold = true;
+            for (float y = sidebar.top; y < sidebar.bottom; y += 2.0f) {
+                const auto title = state->renderer.HitTest(vm, D2D1::RectF(0, 0, 1000, 700),
+                    sidebar.left + 30.0f, y);
+                if (title.region != ui::HitTestResult::SidebarHeader) continue;
+                const bool drives = title.sidebar_section == drives_id;
+                if (drives) title_link |= title.sub_index == 1;
+                else others_fold = others_fold && title.sub_index != 1;
+                const auto chevron = state->renderer.HitTest(vm, D2D1::RectF(0, 0, 1000, 700),
+                    sidebar.right - 20.0f, y);
+                if (drives && chevron.region == ui::HitTestResult::SidebarHeader)
+                    chevron_folds |= chevron.sub_index != 1;
+            }
+            Check(title_link && chevron_folds && others_fold,
+                L"sidebar: This PC title navigates, its chevron and other headers fold");
+        }
         const auto list = ListRect(*state);
         const int x = static_cast<int>(list.left + 30);
         const int y = static_cast<int>(list.bottom - 30);
@@ -973,7 +1138,7 @@ void TestBlankPaneClickNavigation() {
         auto press = [&] { SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, point); };
         auto release = [&] { SendMessageW(hwnd, WM_LBUTTONUP, 0, point); };
         const std::wstring initial_folder = tab->current_path;
-        Check(!state->appPrefs.blank_click_go_back, L"blank pane: back on empty click defaults off");
+        Check(state->appPrefs.blank_click_action == kBlankClickOff, L"blank pane: back on empty click defaults off");
         press();
         Check(state->marqueePending && !state->blankClickTab,
               L"blank pane: disabled back still permits marquee selection");
@@ -982,7 +1147,7 @@ void TestBlankPaneClickNavigation() {
         release();
         Check(tab->current_path == initial_folder,
               L"blank pane: disabled single and double click preserve location");
-        state->appPrefs.blank_click_go_back = true;
+        state->appPrefs.blank_click_action = kBlankClickBack;
         tab->selected.insert(0);
         tab->back_stack = {};
         tab->back_stack.push(L"C:\\PulseBlankClickSelection");
@@ -999,11 +1164,11 @@ void TestBlankPaneClickNavigation() {
         tab->current_path = initial_folder;
         tab->back_stack = {};
         press();
-        state->appPrefs.blank_click_go_back = false;
+        state->appPrefs.blank_click_action = kBlankClickOff;
         release();
         Check(tab->current_path == initial_folder,
               L"blank pane: disabling during a press prevents pending navigation");
-        state->appPrefs.blank_click_go_back = true;
+        state->appPrefs.blank_click_action = kBlankClickBack;
         press();
         Check(state->marqueePending && state->blankClickTab == tab && GetCapture() == hwnd,
               L"blank pane: real blank hit arms click and captures mouse");
@@ -1025,6 +1190,23 @@ void TestBlankPaneClickNavigation() {
         release();
         Check(tab->current_path == fs::NormalizePath(L"C:\\PulseBlankClickHistory"),
               L"blank pane: available history takes precedence over parent");
+        {
+            // Up (B站 #11): the parent folder even when there is history.
+            const std::wstring up_from = tab->current_path;
+            const auto saved_back = tab->back_stack;
+            tab->back_stack.push(L"C:\\PulseBlankClickUpHistory");
+            state->appPrefs.blank_click_action = kBlankClickUp;
+            press();
+            Check(state->blankClickTab == tab, L"blank pane: up mode arms the blank click");
+            release();
+            SendMessageW(hwnd, WM_LBUTTONDBLCLK, MK_LBUTTON, point);
+            release();
+            Check(tab->current_path == fs::NormalizePath(fs::ParentPath(fs::NormalizePath(up_from))),
+                  L"blank pane: up mode goes to the parent folder even with back history");
+            state->appPrefs.blank_click_action = kBlankClickBack;
+            tab->current_path = up_from;
+            tab->back_stack = saved_back;
+        }
         const std::wstring folder = tab->current_path;
         tab->current_path = L"pulse:search:showbox";
         tab->back_stack.push(folder);
@@ -1079,6 +1261,15 @@ void TestBlankPaneClickNavigation() {
         press();
         release();
         Check(tab->current_path == L"C:\\", L"blank pane: drive root with no history stays put");
+        // A double click there goes on to This PC, like the Up button (#68).
+        press();
+        release();
+        SendMessageW(hwnd, WM_LBUTTONDBLCLK, MK_LBUTTON, point);
+        release();
+        Check(tab->current_path.empty(), L"blank pane: double click at a drive root goes up to This PC");
+        tab->back_stack = {};
+        tab->forward_stack = {};
+        tab->current_path = L"C:\\";
         auto& layout = *state->window_tabs.Active();
         auto other = std::make_unique<Pane>();
         other->NewTab(L"C:\\PulseBlankClickSplit\\Child");
@@ -1101,6 +1292,12 @@ void TestBlankPaneClickNavigation() {
             Check(right->ActiveTab()->current_path == fs::NormalizePath(L"C:\\PulseBlankClickSplit") &&
                   tab->current_path == L"C:\\",
                   L"blank pane: split click navigates only the clicked pane");
+            // Growing the layout from a This PC pane clones This PC, not C:\ (#68).
+            right->ActiveTab()->current_path.clear();
+            ApplyLayoutPreset(*state, LayoutPreset::Three);
+            Check(layout.panes.size() == 3 && layout.panes.back()->ActiveTab() &&
+                  layout.panes.back()->ActiveTab()->current_path.empty(),
+                  L"split: a new pane cloned from This PC opens This PC");
         }
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
         state->renderer.SetCompositor(nullptr);
@@ -1778,6 +1975,11 @@ void TestMenuModel() {
                     (dark ? L"dark-" : L"light-") + (scale == 1.0f ? L"100.png" : L"150.png");
                 Check(ui::FluentMenuTestPeer::SaveHistorySnapshot(snapshot_window,
                     snapshot_compositor, path, dark, scale), L"menu: history visual snapshot saved");
+                const auto overflow_path = snapshot_dir + L"\\overflow-menu-" +
+                    (dark ? L"dark-" : L"light-") + (scale == 1.0f ? L"100.png" : L"150.png");
+                Check(ui::FluentMenuTestPeer::SaveOverflowSnapshot(snapshot_window,
+                    snapshot_compositor, overflow_path, dark, scale),
+                    L"menu overflow: visual snapshot saved");
             }
         }
         snapshot_compositor.Shutdown();
@@ -1790,6 +1992,21 @@ void TestMenuModel() {
           L"menu: history actions and scrolling at 100 percent DPI");
     Check(ui::FluentMenuTestPeer::CheckHistoryRows(1.5f),
           L"menu: history actions and scrolling at 150 percent DPI");
+    for (float scale : {1.0f, 1.5f}) {
+        const bool hi = scale != 1.0f;
+        Check(ui::FluentMenuTestPeer::CheckOverflowFit(scale), hi
+            ? L"menu overflow: a menu taller than the screen stays on it with arrows (#67, 150%)"
+            : L"menu overflow: a menu taller than the screen stays on it with arrows (#67, 100%)");
+        Check(ui::FluentMenuTestPeer::CheckOverflowPointer(scale), hi
+            ? L"menu overflow: arrows page on click and rows hit-test through the scroll (150%)"
+            : L"menu overflow: arrows page on click and rows hit-test through the scroll (100%)");
+        Check(ui::FluentMenuTestPeer::CheckOverflowKeysAndWheel(scale), hi
+            ? L"menu overflow: keyboard selection stays between the arrows; scrolling clamps (150%)"
+            : L"menu overflow: keyboard selection stays between the arrows; scrolling clamps (100%)");
+        Check(ui::FluentMenuTestPeer::CheckOverflowArrowHover(scale), hi
+            ? L"menu overflow: resting on an arrow keeps scrolling until the pointer leaves (150%)"
+            : L"menu overflow: resting on an arrow keeps scrolling until the pointer leaves (100%)");
+    }
     Check(ui::FluentMenuTestPeer::CheckSubmenuColors(1.0f),
           L"menu: all submenu color dots hover and dispatch at 100 percent DPI");
     Check(ui::FluentMenuTestPeer::CheckSubmenuColors(1.5f),
@@ -2467,7 +2684,7 @@ void TestContextMenuPrefs() {
     seeded.MergeStaticCache({ { L".xlsx", { empty_row } } });
     Check(seeded.RequestStaticPrefetch(L".xlsx"),
           L"prefs: a seeded extension still re-enumerates from the registry");
-    seeded.CompleteStaticVerbs(L".xlsx", { empty_row });
+    seeded.CompleteStaticVerbs(L".xlsx", { empty_row }, seeded.cache_generation());
     Check(!seeded.RequestStaticPrefetch(L".xlsx"),
           L"prefs: a live pass clears the seeded marker");
 
@@ -2595,6 +2812,19 @@ void TestAppPrefsAndSettingsPath() {
           loaded.open_folders_in_pulse && loaded.language == L"system" &&
           !loaded.show_status_performance,
           L"appprefs: json round-trip");
+    {
+        AppPrefs icon;
+        icon.persist = false;
+        Check(icon.FromJson(L"{\"keep_running_on_close\":true}") && icon.notify_icon_mode == 0,
+              L"tray icon: older preferences keep the icon (#57)");
+        icon.notify_icon_mode = 2;
+        AppPrefs icon_loaded;
+        icon_loaded.persist = false;
+        Check(icon_loaded.FromJson(icon.ToJson()) && icon_loaded.notify_icon_mode == 2,
+              L"tray icon: the choice survives a reload");
+        Check(icon_loaded.FromJson(L"{\"notify_icon_mode\":7}") && icon_loaded.notify_icon_mode == 0,
+              L"tray icon: an unknown value falls back to always");
+    }
     Check(json.find(L"\"launch_on_startup\":false") != std::wstring::npos &&
           json.find(L"\"keep_running_on_close\":true") != std::wstring::npos &&
           json.find(L"\"open_folders_in_pulse\":true") != std::wstring::npos &&
@@ -2838,16 +3068,20 @@ void TestFolderViews() {
     Check(prefs.folder_views.Find(L"\\\\?\\UNC\\SERVER\\share\\图片\\") == ViewMode::Tiles,
           L"folder views: UNC aliases agree");
     Check(!prefs.folder_views.Set(L"pulse:settings", ViewMode::List) &&
-          !prefs.folder_views.Set(L"", ViewMode::List) &&
           !prefs.folder_views.Set(L"relative", ViewMode::List),
           L"folder views: virtual and nonabsolute paths are not persisted");
+    Check(prefs.folder_views.Set(L"", ViewMode::Tiles) &&
+          prefs.folder_views.Find(L"") == ViewMode::Tiles &&
+          !prefs.folder_views.Find(L"pulse:settings") && !prefs.folder_views.Find(L"relative"),
+          L"folder views: This PC keeps its own choice without leaking into virtual views");
     AppPrefs reloaded;
     reloaded.persist = false;
     reloaded.FromJson(prefs.ToJson());
     Check(reloaded.folder_views.Find(unc) == ViewMode::Tiles &&
           reloaded.folder_views.Find(long_path) == ViewMode::Content &&
-          reloaded.folder_views.Find(L"C:\\Pictures\\Work") == ViewMode::Details,
-          L"folder views: preferences round trip including UNC, Unicode and long paths");
+          reloaded.folder_views.Find(L"C:\\Pictures\\Work") == ViewMode::Details &&
+          reloaded.folder_views.Find(L"") == ViewMode::Tiles,
+          L"folder views: preferences round trip including This PC, UNC, Unicode and long paths");
     for (int i = 0; i < 8; ++i) {
         const auto mode = ui::ViewModeFromIndex(i);
         prefs.folder_views.Set(L"C:\\AllModes", mode);
@@ -2856,9 +3090,11 @@ void TestFolderViews() {
               L"folder views: every display mode survives reload");
     }
     reloaded.FromJson(L"{}");
-    Check(!reloaded.folder_views.Find(unc), L"folder views: old preferences load without stale choices");
+    Check(!reloaded.folder_views.Find(unc) && !reloaded.folder_views.Find(L""),
+          L"folder views: old preferences load without stale choices");
     prefs.ResetToDefaults();
-    Check(!prefs.folder_views.Find(long_path), L"folder views: reset clears saved choices");
+    Check(!prefs.folder_views.Find(long_path) && !prefs.folder_views.Find(L""),
+          L"folder views: reset clears saved choices");
 
     auto state = std::make_unique<AppState>();
     state->places.persist = false;
@@ -2907,6 +3143,29 @@ void TestFolderViews() {
         StartLoadingPath(*state, *tab, parent);
         StartLoadingPath(*state, *tab, parent + L"\\legacy");
         Check(tab->view_mode == ViewMode::Tiles, L"folder views: returning to migrated legacy folder preserves its mode");
+        // This PC: tiles chosen there survive a drive visit, going back and a reload.
+        tab->NavigateTo(L"");
+        StartLoadingPath(*state, *tab, L"");
+        Check(tab->view_mode == ViewMode::Details, L"folder views: This PC starts in the default mode");
+        SetViewMode(*state, ViewMode::Tiles);
+        tab->NavigateTo(parent);
+        StartLoadingPath(*state, *tab, parent);
+        Check(tab->view_mode == ViewMode::LargeIcons,
+              L"folder views: a folder opened from This PC keeps its own mode");
+        StartLoadingPath(*state, *tab, tab->GoBack());
+        Check(tab->current_path.empty() && tab->view_mode == ViewMode::Tiles,
+              L"folder views: going back to This PC keeps tiles");
+        Tab opened_at_this_pc;
+        opened_at_this_pc.NavigateTo(L"");
+        const bool reopen_adds_nothing = !opened_at_this_pc.CanGoBack();
+        opened_at_this_pc.NavigateTo(parent);
+        Check(reopen_adds_nothing && opened_at_this_pc.CanGoBack() &&
+              opened_at_this_pc.GoBack().empty(),
+              L"folder views: a tab opened at This PC can go back to it from a drive");
+        state->appPrefs.FromJson(state->appPrefs.ToJson());
+        StartLoadingPath(*state, *tab, parent);
+        StartLoadingPath(*state, *tab, L"");
+        Check(tab->view_mode == ViewMode::Tiles, L"folder views: This PC mode survives a reload");
         state->shot.active = true;
         tab->view_mode = ViewMode::Content;
         StartLoadingPath(*state, *tab, parent);
@@ -2979,6 +3238,29 @@ void TestFolderSorts() {
     Check(reloaded.folder_sorts.Default() == by_name &&
           reloaded.folder_views.Default() == ViewMode::Details && !reloaded.folder_sorts.Find(unc),
           L"folder sorts: old preferences load with name order and details view");
+    {
+        using pulse::app::GroupBy;
+        prefs.folder_groups.Set(L"C:\\G1", GroupBy::Size);
+        prefs.folder_groups.Set(L"pulse:recent", GroupBy::None);
+        prefs.folder_groups.ApplyToAll(GroupBy::Type);
+        Check(prefs.folder_groups.Resolve(L"C:\\G1") == GroupBy::Type &&
+              prefs.folder_groups.Resolve(L"C:\\Fresh") == GroupBy::Type &&
+              prefs.folder_groups.Resolve(L"pulse:recent") == GroupBy::None &&
+              prefs.folder_groups.Resolve(L"pulse:recycle") == GroupBy::Date &&
+              prefs.folder_groups.Resolve(L"") == GroupBy::None,
+              L"folder groups: apply to all covers real folders and keeps virtual views (#75)");
+        reloaded.FromJson(prefs.ToJson());
+        Check(reloaded.folder_groups.Default() == GroupBy::Type &&
+              reloaded.folder_groups.Resolve(L"C:\\Fresh") == GroupBy::Type &&
+              reloaded.folder_groups.Resolve(L"pulse:recent") == GroupBy::None,
+              L"folder groups: applied default survives reload");
+        prefs.folder_groups.Set(L"C:\\G1", GroupBy::None);
+        Check(prefs.folder_groups.Resolve(L"C:\\G1") == GroupBy::None,
+              L"folder groups: a later per-folder choice beats the default");
+        reloaded.FromJson(L"{}");
+        Check(!reloaded.folder_groups.Default() && reloaded.folder_groups.Resolve(L"C:\\Fresh") == GroupBy::None,
+              L"folder groups: old preferences keep folders ungrouped");
+    }
     prefs.ResetToDefaults();
     Check(prefs.folder_sorts.Default() == by_name &&
           prefs.folder_views.Default() == ViewMode::Details,
@@ -3046,6 +3328,18 @@ void TestFolderSorts() {
         active->current_path = L"pulse:recent";
         Check(!ApplyViewToAllFolders(*state, false), L"folder sorts: apply to all ignores virtual views");
         active->current_path = real_path;
+        SetGroupBy(*state, 4);
+        Check(ApplyGroupToAllFolders(*state, 3, false), L"folder groups: apply to all runs on a real folder");
+        active->NavigateTo(c);
+        StartLoadingPath(*state, *active, c);
+        Check(active->group_by == 3, L"folder groups: apply to all groups unsaved folders (#75)");
+        active->NavigateTo(a);
+        StartLoadingPath(*state, *active, a);
+        Check(active->group_by == 3, L"folder groups: apply to all overrides earlier per-folder grouping");
+        active->current_path = L"pulse:recent";
+        Check(!ApplyGroupToAllFolders(*state, 3, false), L"folder groups: apply to all ignores virtual views");
+        active->current_path = real_path;
+        state->appPrefs.folder_groups.Clear();
     }
     state->watches.Stop();
     DestroyWindow(hwnd);
@@ -3177,6 +3471,55 @@ void TestStartupLocation() {
 // starts over there (pinned tabs stay), a second launch with a folder starts
 // over at that folder, and "restore last tabs" leaves everything alone. The
 // tray icon itself is never added here: the hide step is simulated.
+// Settings > Quick Look: codec detection never blocks the caller. It used to
+// run MFTEnumEx inside BuildVm, where COM pumped a title-bar WM_NCHITTEST that
+// re-entered BuildVm and probed again until the stack overflowed.
+void TestPreviewCodecProbe() {
+    const ULONGLONG start = GetTickCount64();
+    unsigned mask = 0;
+    for (int i = 0; i < 9; ++i) mask = ui::DetectPreviewCodecs(true, nullptr);
+    Check(GetTickCount64() - start < 200, L"preview codecs: detection does not block the caller");
+    while (!(mask & ui::kPreviewCodecsDetected) && GetTickCount64() - start < 20000) {
+        Sleep(20);
+        mask = ui::DetectPreviewCodecs(false, nullptr);
+    }
+    Check((mask & ui::kPreviewCodecsDetected) != 0, L"preview codecs: the worker publishes a detected mask");
+}
+
+void TestLockedItemPrompt() {
+    const l10n::StringId ids[] = {l10n::StringId::LockedItemTitle, l10n::StringId::LockedItemMessage,
+        l10n::StringId::LockedItemEndHint, l10n::StringId::LockedItemCloseHint,
+        l10n::StringId::LockedItemEndRetry, l10n::StringId::LockedItemRetry};
+    bool all_loaded = true;
+    for (const auto id : ids) all_loaded = all_loaded && !l10n::Get(id).empty();
+    Check(all_loaded, L"locked item: every prompt string is loaded");
+    ops::OpStatus status;
+    status.phase = ops::OpPhase::Failed;
+    status.locked_path = L"C:\\Work\\report.docx";
+    ops::LockOwner word;
+    word.pid = 4242;
+    word.app_name = L"Microsoft Word";
+    word.image_name = L"WINWORD.EXE";
+    status.lock_owners.push_back(word);
+    const ui::ConfirmDialogSpec spec = LockedItemPromptSpec(status, true);
+    Check(spec.message.find(L"report.docx") != std::wstring::npos &&
+          spec.message.find(L"C:\\Work") == std::wstring::npos &&
+          spec.message.find(L"{name}") == std::wstring::npos,
+          L"locked item: the prompt names the file, not its folder");
+    Check(spec.items.size() == 1 && spec.items[0].find(L"WINWORD.EXE, PID 4242") != std::wstring::npos,
+          L"locked item: the prompt lists the owning process");
+    Check(spec.note == l10n::Get(l10n::StringId::LockedItemEndHint) && spec.danger &&
+              spec.confirm_text == l10n::Get(l10n::StringId::LockedItemEndRetry),
+          L"locked item: ending owners warns about unsaved work");
+    Check(LockedItemOwnersClosable(status), L"locked item: closable owners allow end-and-retry");
+    status.lock_owners.back().closable = false;
+    const ui::ConfirmDialogSpec retry = LockedItemPromptSpec(status, false);
+    Check(!LockedItemOwnersClosable(status) &&
+              retry.note == l10n::Get(l10n::StringId::LockedItemCloseHint) && !retry.danger &&
+              retry.confirm_text == l10n::Get(l10n::StringId::LockedItemRetry),
+          L"locked item: protected owners only get the close-and-retry hint");
+}
+
 void TestTrayReveal() {
     wchar_t temp[MAX_PATH]{};
     GetTempPathW(ARRAYSIZE(temp), temp);
@@ -3248,6 +3591,61 @@ void TestTrayReveal() {
             Check(state->window_tabs.items.size() == 2 && active_is(std::wstring()),
                   L"tray reveal: a This PC default starts over at This PC");
             ShowWindow(hwnd, SW_HIDE);
+
+            // Sign-in launch into the tray (startup_launch.h): neither setting
+            // keeps an icon, yet one shows until the window is revealed.
+            state->appPrefs.keep_running_on_close = false;
+            state->appPrefs.global_search_enabled = false;
+            const size_t tabs_before = state->window_tabs.items.size();
+            const bool started_hidden = state->tray_controller.StartHidden(true);
+            Check(started_hidden && !IsWindowVisible(hwnd) && state->tray_controller.IconVisible(),
+                  L"start in tray: the window stays hidden behind a tray icon");
+            state->tray_controller.HandleTaskbarCreated();
+            Check(state->tray_controller.IconVisible(),
+                  L"start in tray: the icon comes back after Explorer recreates the taskbar");
+            state->tray_controller.RestoreWindow();
+            Check(IsWindowVisible(hwnd) && IsZoomed(hwnd) && !state->tray_controller.IconVisible() &&
+                  state->window_tabs.items.size() == tabs_before,
+                  L"start in tray: a click restores the maximized window as it was and drops the icon");
+            state->tray_controller.HandleTaskbarCreated();
+            Check(!state->tray_controller.IconVisible(),
+                  L"start in tray: a recreated taskbar does not bring back a dropped icon");
+            ShowWindow(hwnd, SW_RESTORE);
+            ShowWindow(hwnd, SW_HIDE);
+
+            // Notification-area icon setting (#57).
+            Check(TrayIconWanted(true, 0, false) && !TrayIconWanted(true, 1, false) &&
+                  TrayIconWanted(true, 1, true) && !TrayIconWanted(true, 2, true) &&
+                  !TrayIconWanted(false, 0, true) && !TrayIconWanted(false, 1, true),
+                  L"tray icon: always, only in the background or never; none without background running");
+            state->appPrefs.keep_running_on_close = true;
+            state->appPrefs.notify_icon_mode = 2;
+            ShowWindow(hwnd, SW_SHOW);
+            HideMainWindowToTray(*state);
+            Check(!IsWindowVisible(hwnd) && !state->tray_controller.IconVisible() && state->hidden_to_tray,
+                  L"tray icon never: closing hides the window without an icon");
+            state->tray_controller.RestoreWindow();
+            Check(IsWindowVisible(hwnd) && !state->tray_controller.IconVisible() && !state->hidden_to_tray,
+                  L"tray icon never: a second launch brings the window back, still without an icon");
+            state->appPrefs.notify_icon_mode = 1;
+            HideMainWindowToTray(*state);
+            Check(!IsWindowVisible(hwnd) && state->tray_controller.IconVisible(),
+                  L"tray icon in background: closing shows the icon");
+            state->tray_controller.RestoreWindow();
+            Check(IsWindowVisible(hwnd) && !state->tray_controller.IconVisible(),
+                  L"tray icon in background: the icon goes when the window comes back");
+            state->appPrefs.notify_icon_mode = 0;
+            state->tray_controller.SetVisible(WantsTrayIcon(*state, false));
+            Check(state->tray_controller.IconVisible(),
+                  L"tray icon always: shown while the window is open");
+            state->tray_controller.SetVisible(false);
+            ShowWindow(hwnd, SW_HIDE);
+            state->appPrefs.notify_icon_mode = 2;
+            Check(state->tray_controller.StartHidden(false, false) && !IsWindowVisible(hwnd) &&
+                  !state->tray_controller.IconVisible(),
+                  L"tray icon never: a sign-in launch into the tray stays hidden without an icon");
+            state->appPrefs.keep_running_on_close = false;
+            state->appPrefs.notify_icon_mode = 0;
             state->tray_controller.Detach();
         }
         state->watches.Stop();
@@ -4067,6 +4465,12 @@ void TestSplitLayout() {
           L"menu: recent rows use 历史路径 badge");
     auto palQ = BuildCommandPalette(L"四宫", { L"C:\\Users" }, {}, false);
     Check(!palQ.empty() && palQ[0].command == CmdLayoutFourGrid, L"menu: palette filters by query");
+    {
+        bool offers_exit = false;
+        for (const auto& it : BuildCommandPalette(l10n::Get(l10n::StringId::ExitPulse), {}, {}, false))
+            offers_exit = offers_exit || it.command == CmdExitPulse;
+        Check(offers_exit, L"menu: the palette offers Exit Pulse (#57)");
+    }
     auto palLong = BuildCommandPalette(L"", { L"\\\\?\\C:\\Users\\TestUser" }, {}, false);
     bool recent_ok = false;
     for (const auto& it : palLong) {
@@ -4446,6 +4850,21 @@ void TestQuickAccess() {
         }
         Check(desktop_default_present,
               L"sidebar sections: built-in links stay visible by default");
+        // The Downloads link shows its localized name like Explorer ("下载"),
+        // not the folder name on disk.
+        PWSTR downloads_raw = nullptr;
+        std::wstring downloads_path;
+        if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Downloads, 0, nullptr, &downloads_raw)) && downloads_raw)
+            downloads_path = fs::NormalizePath(downloads_raw);
+        CoTaskMemFree(downloads_raw);
+        std::wstring downloads_label;
+        for (const auto& section : with_desktop.sidebar) {
+            for (const auto& item : section.items)
+                if (!downloads_path.empty() && item.path == downloads_path) downloads_label = item.label;
+        }
+        Check(downloads_path.empty() ||
+              (!downloads_label.empty() && downloads_label == l10n::Get(l10n::StringId::Downloads)),
+              L"quick access: Downloads uses the localized name");
 
         // A quick-access badge survives the sidebar model rebuild (#41). Use
         // whichever quick-access row this machine shows, not a fixed built-in.
@@ -6595,6 +7014,8 @@ int RunSelfTest1B2() {
         TestFolderSorts();
         TestStartupLocation();
         TestTrayReveal();
+        TestPreviewCodecProbe();
+        TestLockedItemPrompt();
         if (g_log) { fclose(g_log); g_log = nullptr; }
         return g_fail ? 1 : 0;
     }
@@ -6750,6 +7171,8 @@ int RunSelfTest1B2() {
     TestFolderSorts();
     TestStartupLocation();
     TestTrayReveal();
+    TestPreviewCodecProbe();
+    TestLockedItemPrompt();
     TestNavigateAlwaysEnumerates();
     TestSnapshotPatch();
     TestSnapshotPatchBatch();

@@ -1,6 +1,7 @@
 #include "shortcut_help.h"
 #include "../common/windows_compat.h"
 #include "../common/localization.h"
+#include "typography.h"
 #include <windowsx.h>
 #include <algorithm>
 #include <array>
@@ -17,10 +18,10 @@ struct HelpGroup { Id title; std::vector<HelpRow> rows; };
 // handle, grouped. In the two-column layout the first kLeftGroups groups fill
 // the left column.
 constexpr size_t kLeftGroups = 2;
-std::vector<HelpGroup> HelpGroups(bool zh) {
+std::vector<HelpGroup> HelpGroups() {
     return {
         {Id::HelpGroupNav, {
-            {Id::HelpOpen, zh ? L"Enter / 双击" : L"Enter / Double-click"},
+            {Id::HelpOpen, l10n::Pick(L"Enter / 双击", L"Enter / Double-click")},
             {Id::HelpBackForward, L"Alt ← / →"},
             {Id::Up, L"Backspace / Alt ↑"},
             {Id::HelpGoToPath, L"Ctrl L / Alt D / F4"},
@@ -84,7 +85,7 @@ ShortcutHelpLayout LayoutShortcutHelp(float width, float height, float scale) {
     ShortcutHelpLayout l;
     const float w = std::max(0.0f, std::min(820.0f * scale, width - 32 * scale));
     l.narrow = w < 640 * scale;
-    const auto groups = HelpGroups(false);
+    const auto groups = HelpGroups();
     const float content = l.narrow
         ? ColumnHeightDip(groups, 0, groups.size())
         : std::max(ColumnHeightDip(groups, 0, kLeftGroups),
@@ -124,9 +125,12 @@ void DrawShortcutHelp(Compositor& compositor, bool dark, D2D1_COLOR_F accent,
     };
     auto make_format = [&](float size, bool bold) {
         ComPtr<IDWriteTextFormat> format;
-        compositor.DwriteFactory()->CreateTextFormat(L"Microsoft YaHei", nullptr,
+        const wchar_t* family = l10n::effective_language() == l10n::Language::ZhTW
+            ? L"Microsoft JhengHei" : L"Microsoft YaHei";
+        compositor.DwriteFactory()->CreateTextFormat(family, nullptr,
             bold ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
-            DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, size*scale, L"", &format);
+            DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+            size*scale*typography::UiFontScale(), L"", &format);
         return format;
     };
     auto text = [&](std::wstring_view value, D2D1_RECT_F r, float size,
@@ -157,7 +161,6 @@ void DrawShortcutHelp(Compositor& compositor, bool dark, D2D1_COLOR_F accent,
         fill(r, D2D1::ColorF(0,0,0,0.012f), 18);
     }
     fill(l.card, surface, 14);
-    const bool zh = l10n::effective_language() != l10n::Language::EnUS;
     const float left = l.card.left + kPad*scale;
     text(l10n::Get(Id::HintActShortcuts),
          D2D1::RectF(left,l.card.top+18*scale,l.close.left-8*scale,l.card.top+48*scale),
@@ -176,7 +179,7 @@ void DrawShortcutHelp(Compositor& compositor, bool dark, D2D1_COLOR_F accent,
     const float gap = kColumnGap*scale;
     const float column_w = l.narrow ? l.body.right-l.body.left
                                     : (l.body.right-l.body.left-gap)/2;
-    const auto groups = HelpGroups(zh);
+    const auto groups = HelpGroups();
     float y = top;
     for (size_t gi = 0; gi < groups.size(); ++gi) {
         const bool right_column = !l.narrow && gi >= kLeftGroups;

@@ -7,6 +7,7 @@
 #include "../common/localization.h"
 #include "../common/preview_extensions.h"
 #include <mfapi.h>
+#include <objbase.h>
 #include <shellapi.h>
 #include <algorithm>
 #include <atomic>
@@ -14,12 +15,12 @@
 #include <cwchar>
 #include <initializer_list>
 #include <mutex>
+#include <thread>
 
 namespace pulse::ui {
 namespace {
 
-bool Chinese() { return l10n::effective_language() == l10n::Language::ZhCN; }
-const wchar_t* Pick(const wchar_t* zh, const wchar_t* en) { return Chinese() ? zh : en; }
+const wchar_t* Pick(const wchar_t* zh, const wchar_t* en) { return l10n::Pick(zh, en); }
 
 template <size_t N>
 void AppendTable(std::vector<std::wstring>& out, const std::wstring_view (&table)[N]) {
@@ -101,7 +102,7 @@ std::vector<PreviewFormatGroup> BuildGroups() {
 
 struct GroupCache {
     std::mutex mutex;
-    bool chinese = false;
+    l10n::Language language = l10n::Language::System;
     bool built = false;
     std::vector<PreviewFormatGroup> groups;
 };
@@ -171,6 +172,35 @@ unsigned VideoDecoders() {
 }
 
 std::atomic<unsigned> g_codecs{0};
+std::atomic<bool> g_probe_running{false};
+std::atomic<bool> g_probe_again{false};
+
+unsigned ProbeCodecs() {
+    const unsigned decoders = VideoDecoders();
+    unsigned mask = kPreviewCodecsDetected;
+    if (HasPackage({L"Microsoft.HEIFImageExtension_"})) mask |= 1u << 0;
+    if ((decoders & 1u) || HasPackage({L"Microsoft.HEVCVideoExtension_", L"Microsoft.HEVCVideoExtensions_"}))
+        mask |= 1u << 1;
+    if ((decoders & 2u) || HasPackage({L"Microsoft.AV1VideoExtension_"})) mask |= 1u << 2;
+    if (HasPackage({L"Microsoft.WebpImageExtension_"})) mask |= 1u << 3;
+    return mask;
+}
+
+// MFTEnumEx can pump COM messages. Run on the UI thread from BuildVm, it let a
+// title-bar WM_NCHITTEST re-enter BuildVm and start another probe before the
+// first one finished, until the stack overflowed. One worker, never re-entered.
+void RunCodecProbe(HWND notify) {
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    for (;;) {
+        g_codecs.store(ProbeCodecs());
+        if (notify) InvalidateRect(notify, nullptr, FALSE);
+        if (g_probe_again.exchange(false)) continue;
+        g_probe_running.store(false);
+        // A refresh may have arrived between the check above and the store.
+        if (!g_probe_again.exchange(false) || g_probe_running.exchange(true)) break;
+    }
+    if (SUCCEEDED(com)) CoUninitialize();
+}
 
 float ChipWidth(const std::wstring& text, float scale) {
     return (6.6f * static_cast<float>(text.size()) + 16.0f) * scale;
@@ -188,9 +218,10 @@ float EstimateWidth(const std::wstring& text, float scale) {
 const std::vector<PreviewFormatGroup>& PreviewFormatGroups() {
     auto& cache = Cache();
     std::lock_guard lock(cache.mutex);
-    if (!cache.built || cache.chinese != Chinese()) {
+    const l10n::Language language = l10n::effective_language();
+    if (!cache.built || cache.language != language) {
         cache.groups = BuildGroups();
-        cache.chinese = Chinese();
+        cache.language = language;
         cache.built = true;
     }
     return cache.groups;
@@ -217,17 +248,18 @@ PreviewCodecInfo PreviewCodec(int index) {
     }
 }
 
-unsigned DetectPreviewCodecs(bool refresh) {
-    unsigned mask = g_codecs.load();
+unsigned DetectPreviewCodecs(bool refresh, HWND notify) {
+    const unsigned mask = g_codecs.load();
     if ((mask & kPreviewCodecsDetected) && !refresh) return mask;
-    const unsigned decoders = VideoDecoders();
-    mask = kPreviewCodecsDetected;
-    if (HasPackage({L"Microsoft.HEIFImageExtension_"})) mask |= 1u << 0;
-    if ((decoders & 1u) || HasPackage({L"Microsoft.HEVCVideoExtension_", L"Microsoft.HEVCVideoExtensions_"}))
-        mask |= 1u << 1;
-    if ((decoders & 2u) || HasPackage({L"Microsoft.AV1VideoExtension_"})) mask |= 1u << 2;
-    if (HasPackage({L"Microsoft.WebpImageExtension_"})) mask |= 1u << 3;
-    g_codecs.store(mask);
+    if (g_probe_running.exchange(true)) {
+        if (refresh) g_probe_again.store(true);
+        return mask;
+    }
+    try {
+        std::thread(RunCodecProbe, notify).detach();
+    } catch (...) {
+        g_probe_running.store(false); // no thread: report "not detected" and retry next paint
+    }
     return mask;
 }
 

@@ -12,7 +12,7 @@ struct AppPrefs;
 std::wstring DefaultLocation(const AppPrefs& prefs);
 
 // True when startup should bring back the previous session's tabs.
-bool RestoresLastTabs(const AppPrefs& prefs) noexcept;
+bool RestoresLastTabs(const AppPrefs& prefs, bool restore_update_session = false) noexcept;
 
 // Where a tab the user creates opens. `current` is the folder the
 // current-folder rule picked; it is kept unless the default location is chosen.

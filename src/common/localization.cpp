@@ -10,7 +10,17 @@ namespace {
 
 constexpr UINT kFirstString = IDS_SETTINGS;
 // Must stay on the highest allocated string id, otherwise Get() returns empty.
-constexpr UINT kLastString = IDS_GLOBAL_SEARCH_TRUNCATED_SHORT;
+constexpr UINT kLastString = IDS_UI_FONT_LARGER;
+static_assert(static_cast<UINT>(StringId::UiFontLarger) <= kLastString);
+static_assert(static_cast<UINT>(StringId::UpdateWaitingOperations) <= kLastString);
+static_assert(static_cast<UINT>(StringId::SidebarShowHidden) <= kLastString);
+static_assert(static_cast<UINT>(StringId::ApplyGroupNoneMessage) <= kLastString);
+static_assert(static_cast<UINT>(StringId::ExitPulse) <= kLastString);
+static_assert(static_cast<UINT>(StringId::RecycleConfirmManyFormat) <= kLastString);
+static_assert(static_cast<UINT>(StringId::NetworkLiveAddFailed) <= kLastString);
+static_assert(static_cast<UINT>(StringId::IntegrationReapply) <= kLastString);
+static_assert(static_cast<UINT>(StringId::UpdateDescManual) <= kLastString);
+static_assert(static_cast<UINT>(StringId::Downloads) <= kLastString);
 static_assert(static_cast<UINT>(StringId::SettingsChangeTracking) >= kFirstString &&
               static_cast<UINT>(StringId::ChangeDisabled) <= kLastString &&
               static_cast<UINT>(StringId::FolderSortMixed) <= kLastString &&
@@ -26,6 +36,12 @@ static_assert(static_cast<UINT>(StringId::SettingsChangeTracking) >= kFirstStrin
               static_cast<UINT>(StringId::HelpMoveFocus) <= kLastString &&
               static_cast<UINT>(StringId::ContextRowMore) <= kLastString &&
               static_cast<UINT>(StringId::GlobalSearchTruncatedShort) <= kLastString);
+static_assert(static_cast<UINT>(StringId::SettingsCloseLastTabDesc) <= kLastString);
+static_assert(static_cast<UINT>(StringId::LockedItemTitle) <= kLastString &&
+              static_cast<UINT>(StringId::LockedItemRetry) <= kLastString);
+static_assert(static_cast<UINT>(StringId::LanguageZhTW) <= kLastString &&
+              static_cast<UINT>(StringId::SettingsAutoUpdate) <= kLastString &&
+              static_cast<UINT>(StringId::UpdateDescManual) <= kLastString);
 
 HINSTANCE g_module = nullptr;
 std::atomic<Language> g_preference{Language::System};
@@ -33,19 +49,29 @@ std::atomic<Language> g_effective{Language::EnUS};
 std::mutex g_mutex;
 // Published strings stay immutable when the UI language changes. Workers may
 // still hold references to the previous language while finishing an operation.
-std::array<std::array<std::wstring, kLastString - kFirstString + 1>, 2> g_cache;
-std::array<std::array<bool, kLastString - kFirstString + 1>, 2> g_loaded{};
+constexpr size_t kLocaleCount = 3;
+std::array<std::array<std::wstring, kLastString - kFirstString + 1>, kLocaleCount> g_cache;
+std::array<std::array<bool, kLastString - kFirstString + 1>, kLocaleCount> g_loaded{};
 const std::wstring g_empty;
 
 Language SystemLanguage() noexcept {
-    const LANGID language = GetUserDefaultUILanguage();
-    return PRIMARYLANGID(language) == LANG_CHINESE ? Language::ZhCN : Language::EnUS;
+    return LanguageFromLangId(GetUserDefaultUILanguage());
 }
 
 LANGID ResourceLanguage(Language language) noexcept {
-    return language == Language::ZhCN
-        ? MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED)
-        : MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US);
+    switch (language) {
+    case Language::ZhCN: return MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED);
+    case Language::ZhTW: return MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL);
+    default: return MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US);
+    }
+}
+
+size_t LocaleSlot(Language language) noexcept {
+    switch (language) {
+    case Language::ZhCN: return 0;
+    case Language::ZhTW: return 2;
+    default: return 1;
+    }
 }
 
 std::wstring LoadStringResource(UINT id, LANGID language) {
@@ -71,11 +97,25 @@ void ApplyLanguage() {
 } // namespace
 
 bool IsLanguageId(std::wstring_view id) noexcept {
-    return id == L"system" || id == L"zh-CN" || id == L"en-US";
+    return id == L"system" || id == L"zh-CN" || id == L"zh-TW" || id == L"en-US";
+}
+
+Language LanguageFromLangId(LANGID language) noexcept {
+    if (PRIMARYLANGID(language) != LANG_CHINESE) return Language::EnUS;
+    switch (SUBLANGID(language)) {
+    case SUBLANG_CHINESE_TRADITIONAL:  // zh-TW
+    case SUBLANG_CHINESE_HONGKONG:     // zh-HK
+    case SUBLANG_CHINESE_MACAU:        // zh-MO
+    case 0x1F:                         // zh-Hant (LANG_CHINESE_TRADITIONAL)
+        return Language::ZhTW;
+    default:
+        return Language::ZhCN;
+    }
 }
 
 Language LanguageFromId(std::wstring_view id) noexcept {
     if (id == L"zh-CN") return Language::ZhCN;
+    if (id == L"zh-TW") return Language::ZhTW;
     if (id == L"en-US") return Language::EnUS;
     return Language::System;
 }
@@ -83,6 +123,7 @@ Language LanguageFromId(std::wstring_view id) noexcept {
 const wchar_t* LanguageId(Language language) noexcept {
     switch (language) {
     case Language::ZhCN: return L"zh-CN";
+    case Language::ZhTW: return L"zh-TW";
     case Language::EnUS: return L"en-US";
     default: return L"system";
     }
@@ -106,7 +147,11 @@ Language preference() noexcept { return g_preference; }
 Language effective_language() noexcept { return g_effective; }
 
 const wchar_t* LocaleName() noexcept {
-    return g_effective == Language::ZhCN ? L"zh-CN" : L"en-US";
+    switch (g_effective.load()) {
+    case Language::ZhCN: return L"zh-CN";
+    case Language::ZhTW: return L"zh-TW";
+    default: return L"en-US";
+    }
 }
 
 const std::wstring& Get(StringId id) {
@@ -116,12 +161,15 @@ const std::wstring& Get(StringId id) {
     std::lock_guard lock(g_mutex);
     if (!g_module) return g_empty;
     const Language language = g_effective.load();
-    const size_t locale = language == Language::ZhCN ? 0 : 1;
+    const size_t locale = LocaleSlot(language);
     if (!g_loaded[locale][index]) {
-        g_cache[locale][index] = LoadStringResource(value, ResourceLanguage(language));
-        if (g_cache[locale][index].empty() && language != Language::EnUS) {
-            g_cache[locale][index] = LoadStringResource(value, ResourceLanguage(Language::EnUS));
-        }
+        auto& text = g_cache[locale][index];
+        text = LoadStringResource(value, ResourceLanguage(language));
+        // Traditional readers prefer Simplified over English for a missing entry.
+        if (text.empty() && language == Language::ZhTW)
+            text = LoadStringResource(value, ResourceLanguage(Language::ZhCN));
+        if (text.empty() && language != Language::EnUS)
+            text = LoadStringResource(value, ResourceLanguage(Language::EnUS));
         g_loaded[locale][index] = true;
     }
     return g_cache[locale][index];

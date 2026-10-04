@@ -745,6 +745,71 @@ uint32_t ThumbnailRequestPixels(ViewMode mode, float drawn_size) noexcept {
 }
 } // namespace
 
+void MainRenderer::DrawLinkOverlay(float x, float y, float size, const Theme& theme, float opacity,
+    const std::wstring& label, float expansion, float right_limit, const D2D1_RECT_F* artwork) {
+    auto* dc = compositor_ ? compositor_->Dc() : nullptr;
+    if (!dc || size <= 0.0f || opacity <= 0.0f) return;
+    if (!link_arrow_geometry_.get()) {
+        ComPtr<ID2D1Factory> factory;
+        dc->GetFactory(&factory);
+        ComPtr<ID2D1PathGeometry> geometry;
+        ComPtr<ID2D1GeometrySink> sink;
+        if (!factory.get() || FAILED(factory->CreatePathGeometry(&geometry)) ||
+            FAILED(geometry->Open(&sink))) return;
+        // A folded shortcut arrow, with a curved tail rather than an external-link diagonal.
+        sink->BeginFigure({3.2f, 12.4f}, D2D1_FIGURE_BEGIN_FILLED);
+        sink->AddBezier(D2D1::BezierSegment({3.0f, 8.1f}, {5.1f, 5.7f}, {9.0f, 5.7f}));
+        sink->AddLine({9.0f, 3.2f});
+        sink->AddLine({13.0f, 7.0f});
+        sink->AddLine({9.0f, 10.8f});
+        sink->AddLine({9.0f, 8.3f});
+        sink->AddBezier(D2D1::BezierSegment({6.2f, 8.3f}, {4.5f, 9.7f}, {3.2f, 12.4f}));
+        sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+        if (FAILED(sink->Close())) return;
+        link_arrow_geometry_ = std::move(geometry);
+    }
+    const float edge = std::min(size, std::clamp(size * 0.30f, 11.0f * scale_, 22.0f * scale_));
+    const auto ink = artwork ? *artwork : D2D1::RectF(x, y, x + size, y + size);
+    const float label_width = label.empty() ? 0.0f :
+        MeasureLayoutText(compositor_, compositor_->DwriteFactory(), compositor_->SmallFormat(), label) + 8.0f * scale_;
+    const auto bounds = LinkPillRect(ink, edge, std::max(ink.left + edge, right_limit), label_width, expansion);
+    const auto background = IsHighContrast() ? theme.bg : theme.accent;
+    // Accent palettes can contain pale colors: preserve readable contrast.
+    const float luminance = 0.2126f * background.r + 0.7152f * background.g + 0.0722f * background.b;
+    const auto foreground = IsHighContrast() ? theme.text :
+        D2D1::ColorF(luminance > 0.62f ? 0x15253B : 0xFFFFFF);
+    const bool had_fill = brFillInput_.get() != nullptr;
+    const auto previous_fill = had_fill ? brFillInput_->GetColor() : theme.fill_input;
+    const auto plate = D2D1::RoundedRect(bounds, edge * 0.5f, edge * 0.5f);
+    MakeBrush(dc, WithAlpha(theme.bg, opacity), brFillInput_);
+    dc->DrawRoundedRectangle(plate, brFillInput_.get(), 2.0f * scale_);
+    MakeBrush(dc, WithAlpha(background, opacity), brFillInput_);
+    dc->FillRoundedRectangle(plate, brFillInput_.get());
+    D2D1_MATRIX_3X2_F previous_transform;
+    dc->GetTransform(&previous_transform);
+    const float arrow_size = edge * 0.80f;
+    dc->SetTransform(D2D1::Matrix3x2F::Scale(arrow_size / 16.0f, arrow_size / 16.0f) *
+        D2D1::Matrix3x2F::Translation(bounds.left + edge * 0.1f, bounds.top + edge * 0.1f) * previous_transform);
+    MakeBrush(dc, WithAlpha(foreground, opacity), brFillInput_);
+    dc->FillGeometry(link_arrow_geometry_.get(), brFillInput_.get());
+    dc->SetTransform(previous_transform);
+    const float available = bounds.right - bounds.left - edge - 4.0f * scale_;
+    if (available > 4.0f * scale_ && !label.empty()) {
+        dc->PushAxisAlignedClip(bounds, D2D1_ANTIALIAS_MODE_ALIASED);
+        auto* format = compositor_->SmallFormat();
+        const auto previous_alignment = format->GetParagraphAlignment();
+        format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        MakeBrush(dc, WithAlpha(foreground, opacity * expansion), brFillInput_);
+        const auto [head, leaf] = MiddleEllipsisPath(label, available, [&](const std::wstring& text) {
+            return MeasureLayoutText(compositor_, compositor_->DwriteFactory(), format, text);
+        });
+        DrawTextEndEllipsis(dc, compositor_->DwriteFactory(), format, brFillInput_.get(), head + leaf,
+            bounds.left + edge, bounds.top, available, edge);
+        format->SetParagraphAlignment(previous_alignment);
+        dc->PopAxisAlignedClip();
+    }
+    if (had_fill) brFillInput_->SetColor(previous_fill);
+}
 void MainRenderer::DrawEntryIcon(const ListEntryView& entry, float x, float y, float size,
                                  const Theme& theme) {
     const auto dest = D2D1::RectF(x, y, x + size, y + size);
@@ -794,14 +859,16 @@ void MainRenderer::DrawMorphIcon(const ListEntryView& entry, const PaneViewModel
     else if (thumb_to) thumb_alpha = motion::SmoothStep(0.05f, 0.45f, sample.progress);
     thumb_alpha *= sample.opacity;
     bool thumb = false;
+    D2D1_RECT_F thumbnail_artwork = icon;
     if (thumb_alpha > 0.01f) {
         // Shrinking: the old view's decode is already cached. Growing: request
         // the new size; the cache shows any other decoded size meanwhile.
         const bool use_from = thumb_from && !thumb_to;
-        thumb = thumbnail_cache_.Draw(dc, icon, entry.path, entry.attrs,
+        thumb = thumbnail_cache_.DrawGridThumbnail(dc, icon, entry.path, entry.attrs,
             ThumbnailRequestPixels(use_from ? from_mode : vm.view_mode,
                                    use_from ? from_size : target_size),
-            vm.view_generation, entry.modified_value, entry.size_value, thumb_alpha)
+            vm.view_generation, entry.modified_value, entry.size_value, thumb_alpha,
+            true, &thumbnail_artwork)
             == PreviewDrawResult::Bitmap;
     }
     // The settled view's icon is converted on the icon worker meanwhile, so
@@ -809,7 +876,11 @@ void MainRenderer::DrawMorphIcon(const ListEntryView& entry, const PaneViewModel
     if (!entry.record_only)
         icon_cache_.Prefetch(entry.path, entry.name, entry.is_dir, entry.attrs, target_size);
     const float icon_alpha = (thumb ? 1.0f - thumb_alpha : 1.0f) * sample.opacity;
-    if (icon_alpha <= 0.01f) return;
+    if (icon_alpha <= 0.01f) {
+        if (!entry.record_only && entry.is_link)
+            DrawLinkOverlay(icon.left, icon.top, size, theme, sample.opacity, {}, 0.0f, 0.0f, &thumbnail_artwork);
+        return;
+    }
     if (entry.record_only) {
         DrawEntryIcon(entry, icon.left, icon.top, size, theme);
         return;
@@ -827,17 +898,29 @@ void MainRenderer::DrawMorphIcon(const ListEntryView& entry, const PaneViewModel
     ID2D1Bitmap* bitmap = icon_cache_.CachedBitmapFor(entry.path, entry.name, entry.is_dir,
                                                       entry.attrs, locked);
     if (!bitmap) icon_cache_.Prefetch(entry.path, entry.name, entry.is_dir, entry.attrs, locked);
+    const auto is_grid = [](ViewMode mode) {
+        return mode == ViewMode::MediumIcons || mode == ViewMode::LargeIcons || mode == ViewMode::ExtraLargeIcons;
+    };
+    const auto ink = icon_cache_.CachedArtworkBounds(entry.path, entry.name, entry.is_dir, entry.attrs, locked);
+    const float alignment = (is_grid(from_mode) ? 1.0f - sample.progress : 0.0f) +
+                            (is_grid(vm.view_mode) ? sample.progress : 0.0f);
+    const float aligned_y = icon.top + size * (1.0f - ink.bottom) * alignment;
     if (bitmap) {
-        const D2D1_RECT_F dest = D2D1::RectF(icon.left, icon.top, icon.left + size, icon.top + size);
+        const D2D1_RECT_F dest = D2D1::RectF(icon.left, aligned_y, icon.left + size, aligned_y + size);
         dc->DrawBitmap(bitmap, &dest, icon_alpha, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
                        nullptr, nullptr);
     } else if (sample.entering) {
         // Vector placeholders cannot fade; a fading-in item waits for its
         // icon (or thumbnail) instead of popping in at full strength.
     } else if (entry.is_dir) {
-        DrawFolderIcon(icon.left, icon.top, size, theme);
+        DrawFolderIcon(icon.left, aligned_y, size, theme);
     } else {
-        DrawFileIcon(icon.left, icon.top, size, theme);
+        DrawFileIcon(icon.left, aligned_y, size, theme);
+    }
+    if (entry.is_link) {
+        const auto artwork = D2D1::RectF(icon.left + ink.left * size, aligned_y + ink.top * size,
+            icon.left + ink.right * size, aligned_y + ink.bottom * size);
+        DrawLinkOverlay(icon.left, icon.top, size, theme, sample.opacity, {}, 0.0f, 0.0f, &artwork);
     }
 }
 
@@ -955,8 +1038,8 @@ void MainRenderer::DrawMorphFrom(const PaneViewModel& vm, const motion::ViewMorp
         const D2D1_RECT_F dest = D2D1::RectF(was.icon.left, was.icon.top,
                                              was.icon.left + size, was.icon.top + size);
         const bool thumb = !e.record_only && UsesThumbnails(mode) &&
-            thumbnail_cache_.Draw(dc, was.icon, e.path, e.attrs, ThumbnailRequestPixels(mode, size),
-                vm.view_generation, e.modified_value, e.size_value) == PreviewDrawResult::Bitmap;
+            thumbnail_cache_.DrawGridThumbnail(dc, was.icon, e.path, e.attrs, ThumbnailRequestPixels(mode, size),
+                vm.view_generation, e.modified_value, e.size_value, 1.0f, grid, nullptr) == PreviewDrawResult::Bitmap;
         if (thumb) continue;
         if (ID2D1Bitmap* bitmap = e.record_only ? nullptr
                 : icon_cache_.CachedBitmapFor(e.path, e.name, e.is_dir, e.attrs, size)) {
@@ -1274,16 +1357,18 @@ void MainRenderer::DrawSinglePane(const WindowViewModel& vm, const PaneViewModel
             bar.message = pane.banner_message;
             bar.kind = static_cast<fluent::InfoBarKind>(std::clamp(pane.banner_kind, 0, 3));
             bar.show_close = false;
-            if (pane.is_content_search) {
+            if (pane.is_content_search || pane.network_live_action) {
                 const auto action_bounds = bar.bounds;
                 const float action_width = std::min(144.0f * scale_, (action_bounds.right - action_bounds.left) * 0.4f);
                 bar.trailing_width = action_width / scale_;
                 painter_.DrawInfoBar(bar);
                 fluent::ButtonSpec action;
                 action.bounds = D2D1::RectF(action_bounds.right - action_width, action_bounds.top, action_bounds.right, action_bounds.bottom);
-                action.text = l10n::Get(l10n::StringId::ContentManageShort);
+                action.text = l10n::Get(pane.is_content_search ? l10n::StringId::ContentManageShort
+                                                               : l10n::StringId::NetworkLiveAdd);
                 action.kind = fluent::ButtonKind::Transparent;
-                action.state.hovered = IsHovered(vm, HitTestResult::ContentIndexManage);
+                action.state.hovered = IsHovered(vm, pane.is_content_search
+                    ? HitTestResult::ContentIndexManage : HitTestResult::NetworkIndexAdd);
                 painter_.DrawButton(action);
             } else if (pane.compare_active) {
                 D2D1_RECT_F diffRc{}, exitRc{};
@@ -1589,13 +1674,13 @@ void MainRenderer::DrawSinglePane(const WindowViewModel& vm, const PaneViewModel
     dc->PopAxisAlignedClip();
 }
 
-void MainRenderer::DrawTruncatedName(const std::wstring& name, float x, float y, float w, float h,
+bool MainRenderer::DrawTruncatedName(const std::wstring& name, float x, float y, float w, float h,
                                      const Theme& theme, bool selected, const std::vector<NameMatchRange>& matches,
                                      bool dim_extension) {
     (void)selected;
     if (!compositor_ || !compositor_->Dc() || !compositor_->DwriteFactory() ||
         !compositor_->FileNameFormat() || name.empty() || w <= 1.0f) {
-        return;
+        return !name.empty();   // nothing of it shown
     }
     ID2D1DeviceContext* dc = compositor_->Dc();
     IDWriteFactory2* factory = compositor_->DwriteFactory();
@@ -1644,10 +1729,12 @@ void MainRenderer::DrawTruncatedName(const std::wstring& name, float x, float y,
 
     fmt->SetWordWrapping(old_wrap);
     fmt->SetTextAlignment(old_align);
+    return shown != name;
 }
 
 void MainRenderer::DrawCenteredIconName(const std::wstring& name, const D2D1_RECT_F& bounds,
-                                        const D2D1_COLOR_F& color, const Theme& theme, const std::vector<NameMatchRange>& matches) {
+                                        const D2D1_COLOR_F& color, const Theme& theme, const std::vector<NameMatchRange>& matches,
+                                        bool* truncated) {
     if (!compositor_ || !compositor_->Dc() || !compositor_->DwriteFactory() || name.empty()) return;
     const float width = std::max(1.0f, bounds.right - bounds.left);
     const float height = std::max(1.0f, bounds.bottom - bounds.top);
@@ -1660,6 +1747,15 @@ void MainRenderer::DrawCenteredIconName(const std::wstring& name, const D2D1_REC
     layout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
     layout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     layout->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
+    if (truncated) {
+        // Measured untrimmed (the format trims by default): wrapped lines
+        // taller than the cell get cut.
+        const DWRITE_TRIMMING untrimmed{DWRITE_TRIMMING_GRANULARITY_NONE, 0, 0};
+        layout->SetTrimming(&untrimmed, nullptr);
+        DWRITE_TEXT_METRICS metrics{};
+        *truncated = SUCCEEDED(layout->GetMetrics(&metrics)) &&
+            (metrics.height > height + 0.5f || metrics.widthIncludingTrailingWhitespace > width + 0.5f);
+    }
     DWRITE_TRIMMING trimming{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
     ComPtr<IDWriteInlineObject> ellipsis;
     compositor_->DwriteFactory()->CreateEllipsisTrimmingSign(layout.get(), &ellipsis);
@@ -1819,6 +1915,8 @@ void MainRenderer::DrawList(const PaneViewModel& vm, float x, float y, float w, 
                             const Theme& theme, int hover_region, int hover_control_index,
                             bool pane_focused, int pane_index) {
     ID2D1DeviceContext* dc = compositor_->Dc();
+    if (pane_index >= 0 && pane_index < static_cast<int>(hover_names_.size()))
+        hover_names_[static_cast<size_t>(pane_index)] = {};
     const auto highlight_terms = NameHighlightTerms(vm.filter_text, vm.is_search ? vm.search_query : L" ");
     MakeBrush(dc, theme.fill_hover, brFillHover_);
     MakeBrush(dc, pane_focused ? theme.fill_selected : theme.fill_selected_inactive, brFillSelected_);
@@ -1841,6 +1939,21 @@ void MainRenderer::DrawList(const PaneViewModel& vm, float x, float y, float w, 
     const bool detailsView = vm.view_mode == ViewMode::Details;
     D2D1_COLOR_F zebraColor = theme.text;
     zebraColor.a = (theme.bg.r < 0.5f) ? 0.035f : 0.025f;
+    // #78: the focused pane's selection is an accent gradient, strongest beside
+    // the indicator bar. Unfocused panes keep their neutral fill and high
+    // contrast keeps the system highlight.
+    ComPtr<ID2D1LinearGradientBrush> selection_gradient;
+    if (pane_focused && !IsHighContrast()) {
+        const D2D1_GRADIENT_STOP stops[] = {{0.0f, theme.list_selected_start},
+                                            {1.0f, theme.list_selected_end}};
+        ComPtr<ID2D1GradientStopCollection> collection;
+        if (SUCCEEDED(dc->CreateGradientStopCollection(stops, 2, &collection)) && collection.get()) {
+            dc->CreateLinearGradientBrush(
+                D2D1::LinearGradientBrushProperties(D2D1::Point2F(0.0f, 0.0f),
+                                                    D2D1::Point2F(1.0f, 0.0f)),
+                collection.get(), &selection_gradient);
+        }
+    }
 
     // Rows slide into place after small inserts/removals and new rows flash
     // (ui_motion.h ListShiftMotion). Same folder, view, filter and scroll only.
@@ -1968,6 +2081,13 @@ void MainRenderer::DrawList(const PaneViewModel& vm, float x, float y, float w, 
             bool selected = vm.IsRowSelected(src);
             bool hover = (src == vm.hover_index);
             bool cut = e.record_only || vm.cut_names.contains(e.name);
+            const bool expand_link = e.is_link && (hover || selected) && src != vm.rename_index;
+            const float link_expansion = e.is_link && pane_index >= 0 && pane_index < 8
+                ? link_pill_motion_[pane_index].Update(list_context, row_key, expand_link,
+                    motion_frame_, motion_now_, !IsHighContrast()) : (expand_link ? 1.0f : 0.0f);
+            const std::wstring link_label = e.link_destination.empty()
+                ? l10n::Pick(L"目标不可用", L"Target unavailable") : e.link_destination;
+            D2D1_RECT_F artwork = iconRect;
 
             const float inset = 4.0f * scale_;
             if (draw_shapes && detailsView && list_zebra_ && (i & 1) && !selected && !hover && !IsHighContrast()) {
@@ -1998,10 +2118,27 @@ void MainRenderer::DrawList(const PaneViewModel& vm, float x, float y, float w, 
                 const D2D1_RECT_F sel = D2D1::RectF(
                     bg.left + inset, bg.top + scale_,
                     bg.right - inset, bg.bottom - scale_);
-                FillRoundedRect(dc, brFillSelected_.get(), sel.left, sel.top,
-                    std::max(0.0f, sel.right - sel.left),
-                    std::max(0.0f, sel.bottom - sel.top),
-                    theme.radius_control * scale_);
+                const float sel_radius = theme.radius_control * scale_;
+                const D2D1_ROUNDED_RECT sel_rr = D2D1::RoundedRect(
+                    D2D1::RectF(sel.left, sel.top, std::max(sel.left, sel.right),
+                                std::max(sel.top, sel.bottom)),
+                    sel_radius, sel_radius);
+                if (selection_gradient.get()) {
+                    selection_gradient->SetStartPoint(D2D1::Point2F(sel.left, 0.0f));
+                    selection_gradient->SetEndPoint(D2D1::Point2F(sel.right, 0.0f));
+                    dc->FillRoundedRectangle(&sel_rr, selection_gradient.get());
+                } else {
+                    dc->FillRoundedRectangle(&sel_rr, brFillSelected_.get());
+                }
+                if (list_selection_outline_ && sel.right - sel.left > 2.0f * scale_) {
+                    // Settings > File list > Outline selected items (#78).
+                    MakeBrush(dc, pane_focused ? theme.list_selected_outline
+                                               : WithAlpha(theme.text, 0.30f), brFillInput_);
+                    const float half = 0.5f * scale_;
+                    dc->DrawRoundedRectangle(D2D1::RoundedRect(
+                        D2D1::RectF(sel.left + half, sel.top + half, sel.right - half, sel.bottom - half),
+                        sel_radius, sel_radius), brFillInput_.get(), 1.0f * scale_);
+                }
                 if (pane_focused) {
                     MakeBrush(dc, theme.accent, brAccent_);
                     const float indicator_h = std::min(18*scale_, std::max(0.0f, sel.bottom-sel.top-8*scale_));
@@ -2044,15 +2181,28 @@ void MainRenderer::DrawList(const PaneViewModel& vm, float x, float y, float w, 
                 const float iconY = iconRect.top;
                 const float renderedIconSize = std::min(snappedIconW, snappedIconH);
                 const bool drewThumbnail = !e.record_only && UsesThumbnails(vm.view_mode) &&
-                    thumbnail_cache_.Draw(dc, iconRect, e.path, e.attrs,
+                    thumbnail_cache_.DrawGridThumbnail(dc, iconRect, e.path, e.attrs,
                         ThumbnailRequestPixels(vm.view_mode, renderedIconSize),
-                        vm.view_generation, e.modified_value, e.size_value)
+                        vm.view_generation, e.modified_value, e.size_value, 1.0f, iconGrid, &artwork)
                         == PreviewDrawResult::Bitmap;
                 if (!drewThumbnail) {
+                    ID2D1Bitmap* grid_bitmap = iconGrid && !morphing && !e.record_only
+                        ? icon_cache_.BitmapFor(e.path, e.name, e.is_dir, e.attrs, renderedIconSize) : nullptr;
+                    float align_bottom = 0.0f;
+                    if (iconGrid && !e.record_only) {
+                        const auto ink = icon_cache_.CachedArtworkBounds(e.path, e.name, e.is_dir, e.attrs, renderedIconSize);
+                        align_bottom = renderedIconSize * (1.0f - ink.bottom);
+                        artwork = {iconRect.left + ink.left * renderedIconSize,
+                            iconRect.top + ink.top * renderedIconSize + align_bottom,
+                            iconRect.left + ink.right * renderedIconSize, iconRect.bottom};
+                    }
+                    // Align the actual artwork, not the transparent bitmap square,
+                    // to the name baseline. The name/edit/hit rectangles stay fixed.
+                    const RowShiftTransform artwork_transform(dc, 0.0f, align_bottom);
                     // An item already settled while others still glide: no
                     // synchronous conversion burst in the tail frames; the
                     // first static frame after the morph converts the rest.
-                    ID2D1Bitmap* settled = morphing && !e.record_only
+                    ID2D1Bitmap* settled = grid_bitmap ? grid_bitmap : morphing && !e.record_only
                         ? icon_cache_.CachedBitmapFor(e.path, e.name, e.is_dir, e.attrs, renderedIconSize)
                         : nullptr;
                     if (!settled && morphing && !e.record_only)
@@ -2069,6 +2219,15 @@ void MainRenderer::DrawList(const PaneViewModel& vm, float x, float y, float w, 
                         DrawEntryIcon(e, iconX, iconY, renderedIconSize, theme);
                     }
                 }
+            }
+            if (draw_shapes && !morph_item && !e.record_only && e.is_link) {
+                const bool expand_on_icon = iconGrid;
+                const std::wstring caption = e.link_destination.find(L"://") != std::wstring::npos
+                    ? link_label : FileNameOf(link_label);
+                DrawLinkOverlay(iconRect.left, iconRect.top,
+                    std::min(iconRect.right - iconRect.left, iconRect.bottom - iconRect.top), theme,
+                    cut ? 0.55f : 1.0f, expand_on_icon ? caption : std::wstring(),
+                    expand_on_icon ? link_expansion : 0.0f, cell.right - 8.0f * scale_, &artwork);
             }
             // Mid-morph the labels are drawn in a second, faded pass.
             if (!draw_text) continue;
@@ -2120,6 +2279,8 @@ void MainRenderer::DrawList(const PaneViewModel& vm, float x, float y, float w, 
                 textY = nameRc.top + (textH - lineH) * 0.5f;
                 textH = lineH;
             }
+            const bool inline_link = !iconGrid && e.is_link && link_expansion > 0.0f &&
+                src != vm.rename_index && !change && e.badge.empty();
             const float badgeW = change && !iconGrid ? ChangeBadgeWidth(*change, scale_, compositor_) : vm.view_mode == ViewMode::Details && !e.badge.empty()
                 ? std::min(108.0f * scale_, painter_.MeasureTagWidth(e.badge)) : 0.0f;
             const NameTrail trail = LayoutNameTrail(
@@ -2159,15 +2320,31 @@ void MainRenderer::DrawList(const PaneViewModel& vm, float x, float y, float w, 
                 }
                 if (cut) nameColor = WithAlpha(nameColor, 0.55f);
                 MakeBrush(dc, nameColor, brText_);
+                bool name_truncated = true;
                 if (iconGrid && tagDotCount == 0) {
-                    DrawCenteredIconName(e.name, nameRc, nameColor, theme, name_matches);
+                    DrawCenteredIconName(e.name, nameRc, nameColor, theme, name_matches,
+                                         hover ? &name_truncated : nullptr);
                 } else {
                     Theme name_theme = theme;
                     name_theme.text = nameColor;
-                    DrawTruncatedName(e.name, trail.name_x, textY, trail.name_w, textH, name_theme, selected, name_matches,
-                                      detailsView && !e.is_dir);
+                    name_truncated = DrawTruncatedName(e.name, trail.name_x, textY, trail.name_w, textH, name_theme,
+                                                       selected, name_matches, detailsView && !e.is_dir);
                 }
+                // The row tooltip repeats the name only when it is cut off (B站 #15).
+                if (hover && pane_index >= 0 && pane_index < static_cast<int>(hover_names_.size()))
+                    hover_names_[static_cast<size_t>(pane_index)] = {src, name_truncated};
                 if (change && !iconGrid) DrawChangeBadge(compositor_, painter_, *change, trail.badge, theme, scale_);
+                const float link_left = (trail.tag_n > 0
+                    ? trail.tag_x0 + trail.tag_r * 2 + (trail.tag_n - 1) * trail.tag_step
+                    : trail.name_x + trail.name_w) + 6.0f * scale_;
+                const float link_right = std::min(link_left + 220.0f * scale_, trail.name_x + trail.line_w);
+                if (inline_link && link_right - link_left >= 36.0f * scale_) {
+                    const float diameter = std::min(18.0f * scale_, textH);
+                    const auto anchor = D2D1::RectF(link_left, textY + (textH - diameter) * 0.5f,
+                        link_left + diameter, textY + (textH + diameter) * 0.5f);
+                    DrawLinkOverlay(anchor.left, anchor.top, diameter / 0.30f, theme,
+                        link_expansion, link_label, link_expansion, link_right, &anchor);
+                }
                 if (!change && !e.badge.empty() && trail.badge.right > trail.badge.left) {
                     painter_.DrawTag({trail.badge, e.badge, e.badge_color});
                 }
@@ -2375,6 +2552,16 @@ void MainRenderer::DrawList(const PaneViewModel& vm, float x, float y, float w, 
                         break;
                     }
                 }
+            } else if (vm.view_mode == ViewMode::Tiles && e.drive_used >= 0.0f) {
+                // This PC tiles, as in File Explorer: usage bar, then free of total.
+                const float textW = std::max(0.0f, nameRc.right - nameRc.left);
+                const float barTop = nameRc.top + 27.0f * scale_;
+                const D2D1_RECT_F bar{ nameRc.left, barTop,
+                    nameRc.left + std::min(textW, 240.0f * scale_), barTop + 6.0f * scale_ };
+                painter_.DrawCapacityBar(bar, e.drive_used, theme.accent);
+                DrawTextEndEllipsis(dc, compositor_->DwriteFactory(), compositor_->SmallFormat(),
+                    brTextSecondary_.get(), e.drive_space_text,
+                    nameRc.left, bar.bottom + 2.0f * scale_, textW, 20.0f * scale_);
             } else if (vm.view_mode == ViewMode::Tiles || vm.view_mode == ViewMode::Content) {
                 std::wstring meta = !e.snippet.empty() ? e.snippet : e.type_text;
                 if (e.snippet.empty() && !e.size_text.empty())

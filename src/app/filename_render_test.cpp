@@ -63,7 +63,10 @@ struct FilenameRenderTest {
                             const bool has_extension = dot != std::wstring::npos && dot > 0 &&
                                 shown.size() - dot <= 8 && shown.find(L'\u2026', dot) == std::wstring::npos;
                             const float phase = row % 2 ? 0.375f : 0.0f;
-                            renderer.DrawTruncatedName(name, 20 * scale + phase, y, name_width, height, theme, false, matches, true);
+                            const bool reported = renderer.DrawTruncatedName(
+                                name, 20 * scale + phase, y, name_width, height, theme, false, matches, true);
+                            // The row tooltip relies on this (B站 #15).
+                            check(reported == (shown != name), "drawn name reports exactly when it was shortened");
                             // Independent reference: shape the complete visible name once,
                             // then color the extension by UTF-16 range. No substring widths.
                             const auto rc = D2D1::RectF(460 * scale + phase, y, 460 * scale + phase + name_width, y + height);
@@ -122,6 +125,24 @@ struct FilenameRenderTest {
                         }
                     }
                 }
+            }
+            // Icon views wrap the name over lines; cut-off lines count as shortened.
+            {
+                const float scale = 1.0f;
+                compositor.Resize(900, 650);
+                compositor.RecreateTextFormats(scale);
+                renderer.SetScale(scale);
+                const auto theme = MakeTheme(false, HexColor(0x0078D4));
+                auto* dc = compositor.Dc();
+                bool short_cut = true, long_cut = false;
+                dc->BeginDraw();
+                dc->Clear(theme.bg);
+                renderer.DrawCenteredIconName(L"README", D2D1::RectF(20, 20, 220, 60), theme.text, theme, {}, &short_cut);
+                renderer.DrawCenteredIconName(std::wstring(L"Drawing1234567890-very-long-file-name-") + std::wstring(60, L'x') + L".dwg",
+                    D2D1::RectF(20, 80, 120, 120), theme.text, theme, {}, &long_cut);
+                check(SUCCEEDED(dc->EndDraw()), "draw icon-view names");
+                check(!short_cut, "icon-view name that fits is not reported as shortened");
+                check(long_cut, "icon-view name cut off after its wrapped lines is reported as shortened");
             }
         }
         DestroyWindow(hwnd);

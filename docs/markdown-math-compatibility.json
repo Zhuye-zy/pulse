@@ -1,0 +1,2684 @@
+{
+  "summary": {
+    "schema": 1,
+    "referenceEngine": "KaTeX",
+    "referenceVersion": "0.16.22",
+    "corpusSha256": "fab865f2c960788b3911c03d880e527a06574431f4fefc8e006bea478892f8d1",
+    "nativeInput": "build/math-native-compat.tsv",
+    "total": 132,
+    "nativeInputSha256": "69f4f149dd0fb2239628f2011c734daadde47f461d50b6c1542e6f35e9e172dc",
+    "referenceInputSha256": "179ed81fb521ebaf84749bed2e34ae10db0fd38c6ccabbcee8fc7a818779676b",
+    "bothAccept": 90,
+    "nativeAcceptedReferenceLimited": 2,
+    "documentedNativeFallback": 19,
+    "bothReject": 21,
+    "problemCases": [],
+    "structureReviewCases": [],
+    "extraNativeIds": [],
+    "extraReferenceIds": [],
+    "comparedStructures": [
+      "fraction / mfrac",
+      "radical / msqrt + mroot",
+      "environment / mtable",
+      "phantom / mphantom",
+      "brace / stretchy brace mo"
+    ],
+    "note": "Matching counts do not prove AST semantics, glyph fidelity or visual equivalence. Script, accent and operator-limit MathML overlaps are intentionally not equated."
+  },
+  "rows": [
+    {
+      "id": "quadratic_roots",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:1,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:6,mn:5,mo:5,mrow:5,msqrt:1,msub:1,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 244.413,
+        "height": 81.8068,
+        "baseline": 55.6994
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "normal_density",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:1,script:2,environment:0,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:8,mn:5,mo:10,mrow:6,msqrt:1,msup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 360.707,
+        "height": 89.6629,
+        "baseline": 52.7621
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "bayes_rule",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:10,mo:11,mrow:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 294.479,
+        "height": 68.0762,
+        "baseline": 41.9688
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "binomial_probability",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:10,mn:1,mo:10,mrow:3,msup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 352.793,
+        "height": 70.1694,
+        "baseline": 43.0154
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "geometric_series",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:3,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:7,mn:4,mo:6,mrow:5,msup:2,munderover:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 190.854,
+        "height": 86.995,
+        "baseline": 56.1652
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "fourier_transform",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:12,mo:8,mrow:3,msubsup:1,msup:1,mtext:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 264.835,
+        "height": 58.538,
+        "baseline": 43.5142
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "normal:3"
+    },
+    {
+      "id": "second_derivative",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:7,mn:1,mo:8,mrow:2,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 250.106,
+        "height": 39.5841,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "normal:2"
+    },
+    {
+      "id": "gradient_descent",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:3,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:9,mn:1,mo:5,mrow:2,msub:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 215.949,
+        "height": 36.4291,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "bold:3,normal:1"
+    },
+    {
+      "id": "matrix_system",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:3,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:2,mn:6,mo:8,mrow:5,mstyle:8,mtable:3,mtd:8,mtr:6",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 262.991,
+        "height": 66.2462,
+        "baseline": 39.9786
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "determinant_identity",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:9,mo:5,mrow:2,mstyle:4,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 251.579,
+        "height": 66.2462,
+        "baseline": 39.9786
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "piecewise_loss",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:0,script:1,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:12,mn:6,mo:7,mrow:5,mstyle:4,msup:1,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 293.854,
+        "height": 154.466,
+        "baseline": 84.0884
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "normal:6"
+    },
+    {
+      "id": "aligned_derivation",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:6,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:12,mn:8,mo:12,mrow:6,mstyle:4,msup:6,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 280.117,
+        "height": 83.1683,
+        "baseline": 48.4396
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "nested_continued_fraction",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:3,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:3,mi:1,mn:7,mo:4,mrow:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 186.289,
+        "height": 103.664,
+        "baseline": 41.9688
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "root_and_scripts",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:1,script:3,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:7,mn:3,mo:3,mroot:1,mrow:3,msub:1,msubsup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 182.955,
+        "height": 58.404,
+        "baseline": 43.5023
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "constrained_sum",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:4,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:11,mn:1,mo:6,mrow:3,mstyle:3,msub:3,mtable:1,mtd:2,mtr:2,munder:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 172.102,
+        "height": 88.0645,
+        "baseline": 34.0668
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "annotated_limit",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:4,mn:3,mo:9,mrow:4,msup:1,munder:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 238.38,
+        "height": 62.3021,
+        "baseline": 33.8717
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "double-struck:1,normal:1"
+    },
+    {
+      "id": "convergence_arrow",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:1,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:5,mo:2,mpadded:2,mrow:2,msub:1,mtext:1,munderover:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 172.108,
+        "height": 47.7843,
+        "baseline": 34.7298
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "normal:1"
+    },
+    {
+      "id": "tensor_indices",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:5,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:17,mo:2,mrow:3,msubsup:5",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 218.657,
+        "height": 46.5952,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "vector_accents",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:1,script:2,environment:0,fence:0,accent:4,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:7,mn:4,mo:8,mover:4,mrow:3,mspace:1,msqrt:1,msubsup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 279.944,
+        "height": 99.6373,
+        "baseline": 51.2296
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "sample_mean",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:4,environment:0,fence:0,accent:2,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:11,mn:3,mo:13,mover:2,mrow:2,mspace:1,msub:3,munderover:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 406.218,
+        "height": 86.995,
+        "baseline": 56.1652
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "normal:1"
+    },
+    {
+      "id": "boxed_energy",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:1,environment:0,fence:0,accent:0,decoration:1,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,menclose:1,mfrac:1,mi:6,mn:3,mo:2,mrow:2,mstyle:3,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 222.651,
+        "height": 78.7562,
+        "baseline": 47.3088
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "cancelled_ratio",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:0,accent:0,decoration:2,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,menclose:2,mfrac:1,mi:4,mn:2,mo:5,mrow:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 190.802,
+        "height": 68.0762,
+        "baseline": 41.9688
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "array_alignment",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:6,mo:4,mrow:2,mstyle:6,mtable:1,mtd:6,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 132.868,
+        "height": 64.2734,
+        "baseline": 38.9922
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "inline_style_fraction",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:5,mo:2,mrow:1,mstyle:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 125.643,
+        "height": 68.0762,
+        "baseline": 41.9688
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "nested_style_scope",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:5,mn:2,mo:3,mrow:2,mstyle:2,msub:1,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 178.646,
+        "height": 68.0762,
+        "baseline": 41.9688
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "annotated_equality",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:0,accent:2,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:7,mn:1,mo:10,mover:1,mrow:2,mspace:1,msup:1,mtext:1,munder:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 235.622,
+        "height": 74.3335,
+        "baseline": 45.9031
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "normal:1"
+    },
+    {
+      "id": "modular_equation",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:6,mn:2,mo:4,mrow:3,mspace:3,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 195.831,
+        "height": 39.5841,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "normal:3"
+    },
+    {
+      "id": "text_with_spaces",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:10,mn:1,mo:7,mrow:3,mspace:1,msubsup:1,mtext:4",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 386.597,
+        "height": 50.2743,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "bold:2"
+    },
+    {
+      "id": "calligraphic_space",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:9,mn:1,mo:9,mrow:2,msub:1,munderover:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 244.983,
+        "height": 86.995,
+        "baseline": 56.1652
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "script:1"
+    },
+    {
+      "id": "underbrace_derivation",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:1,phantom:0",
+      "referenceMathmlTags": "math:1,mi:4,mn:3,mo:7,mrow:3,msub:1,mtext:1,munder:2",
+      "referenceConstructs": "brace:1,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 256.378,
+        "height": 66.5165,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "explicit_spacing",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:3,mo:1,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 127.634,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "colored_error",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:5,mo:2,mrow:1,mstyle:1,msub:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "equation_number",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:3,mn:1,mo:1,mrow:1,msup:1,mtable:1,mtd:4,mtext:1,mtr:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_definition",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:2,mn:1,mrow:1,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 49.5057,
+        "height": 39.5841,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "phantom_alignment",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:1",
+      "referenceMathmlTags": "math:1,mi:3,mn:2,mo:3,mphantom:1,mrow:5,mstyle:4,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 105.836,
+        "height": 64.2734,
+        "baseline": 38.9922
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "array_vertical_rules",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:4,mstyle:4,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 53.4875,
+        "height": 65.832,
+        "baseline": 39.7715
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "unclosed_fraction",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "duplicate_superscript",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "missing_radicand",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "mismatched_environment",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "missing_right_fence",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "unknown_command",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "stray_alignment",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "array_column_overflow",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "ruled_augmented_system",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:1,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,menclose:1,mn:6,mo:3,mrow:2,mstyle:6,mtable:1,mtd:6,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 132.123,
+        "height": 76.9838,
+        "baseline": 45.3474
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "double_rule_table",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,menclose:1,mi:2,mn:5,mrow:1,mstyle:6,msup:1,mtable:1,mtd:6,mtr:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 88.9051,
+        "height": 131.369,
+        "baseline": 72.54
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "array_row_gap_em",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:1,script:1,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:7,mn:4,mo:9,mrow:5,msqrt:1,mstyle:6,msup:1,mtable:1,mtd:6,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 193.25,
+        "height": 112.558,
+        "baseline": 63.1345
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "array_row_gap_ex_pt",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:0,script:1,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:3,mn:6,mstyle:6,msub:1,mtable:1,mtd:6,mtr:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 66.2461,
+        "height": 161.399,
+        "baseline": 87.5549
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "ruled_nested_matrix",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:1,script:1,environment:2,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,menclose:1,mfrac:1,mi:5,mn:5,mo:1,mrow:1,msqrt:1,mstyle:8,msup:1,mtable:2,mtd:8,mtr:4",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 166.302,
+        "height": 131.64,
+        "baseline": 72.6754
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "conditional_middle",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:8,mo:9,mrow:4",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 250.732,
+        "height": 68.0762,
+        "baseline": 41.9688
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "set_middle_condition",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:4,mn:2,mo:6,mrow:2,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 233.028,
+        "height": 40.8232,
+        "baseline": 33.8717
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "double-struck:1"
+    },
+    {
+      "id": "multiple_middle_fences",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:1,script:0,environment:0,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:5,mo:5,mrow:2,msqrt:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 257.444,
+        "height": 70.1694,
+        "baseline": 43.0154
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "nested_middle_fences",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:2,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:5,mn:1,mo:8,mrow:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 279.764,
+        "height": 70.1694,
+        "baseline": 43.0154
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "underbrace_fraction_sum",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:1,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:4,mn:3,mo:6,mrow:3,mtext:1,munder:2",
+      "referenceConstructs": "brace:1,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 221.559,
+        "height": 104.456,
+        "baseline": 41.9688
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "overbrace_power_product",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:1,phantom:0",
+      "referenceMathmlTags": "math:1,mi:6,mo:4,mover:2,mrow:3,msup:1,mtext:1",
+      "referenceConstructs": "brace:1,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 152.438,
+        "height": 66.5165,
+        "baseline": 60.1845
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "brace_opposite_scripts",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:2,phantom:0",
+      "referenceMathmlTags": "math:1,mi:8,mn:1,mo:6,mover:2,mrow:3,msubsup:1,munder:1",
+      "referenceConstructs": "brace:2,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 225.973,
+        "height": 102.896,
+        "baseline": 60.1845
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "nested_brace_labels",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:2,phantom:0",
+      "referenceMathmlTags": "math:1,mi:7,mo:6,mover:2,mrow:3,munder:2",
+      "referenceConstructs": "brace:2,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 193.196,
+        "height": 102.896,
+        "baseline": 60.1845
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "phantom_fraction_alignment",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:0,script:0,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:1",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:8,mo:4,mphantom:1,mrow:4,mstyle:4,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 121.274,
+        "height": 140.152,
+        "baseline": 76.9316
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "horizontal_phantom_spacing",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:1",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:5,mo:2,mpadded:1,mphantom:1,mrow:1",
+      "referenceConstructs": "brace:0,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 131.686,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "vertical_phantom_height",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:1",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:5,mn:2,mo:2,mpadded:1,mphantom:1,mrow:2,msub:1,msup:1",
+      "referenceConstructs": "brace:0,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 129.578,
+        "height": 53.1775,
+        "baseline": 40.5531
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "signed_hspace_equation",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:4,mo:2,mrow:1,mspace:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 124.286,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "mixed_unit_hspace",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:1,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:5,mo:2,mrow:1,mspace:2,msqrt:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 181.912,
+        "height": 68.0762,
+        "baseline": 41.9688
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "brace_phantom_alignment",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:1,phantom:1",
+      "referenceMathmlTags": "math:1,mi:4,mo:4,mover:2,mpadded:1,mphantom:1,mrow:2,mtext:1",
+      "referenceConstructs": "brace:1,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 158.622,
+        "height": 66.5165,
+        "baseline": 60.1845
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "ruled_brace_phantom_array",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:2,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:1,phantom:1",
+      "referenceMathmlTags": "math:1,menclose:1,mfrac:1,mi:8,mn:1,mo:3,mphantom:1,mrow:4,mspace:1,mstyle:4,msup:1,mtable:1,mtd:4,mtr:2,munder:2",
+      "referenceConstructs": "brace:1,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 119.455,
+        "height": 152.93,
+        "baseline": 83.3207
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "middle_outside_fence",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "missing_middle_delimiter",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "hspace_missing_unit",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "hspace_malformed_decimal",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "array_hline_inside_cell",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "array_row_gap_bad_unit",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "array_negative_row_gap",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:2,mstyle:2,mtable:1,mtd:2,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "array_triple_vertical_rules",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:4,mstyle:4,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "hspace_boundary_em",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:1,mn:2,mo:2,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 583.566,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "hspace_boundary_ex",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:1,mn:2,mo:2,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 551.691,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "hspace_boundary_pt",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:1,mn:2,mo:2,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 369.237,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "hspace_over_budget_em",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:3,mo:2,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "hspace_over_budget_ex",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:3,mo:2,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "hspace_over_budget_pt",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:3,mo:2,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "array_row_gap_over_budget",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:2,mstyle:2,mtable:1,mtd:2,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "array_triple_horizontal_rules",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,menclose:1,mi:4,mrow:1,mstyle:4,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "pure_vertical_phantom",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:1",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:2,mpadded:1,mphantom:1,mrow:1",
+      "referenceConstructs": "brace:0,phantom:1",
+      "metricsException": {
+        "source": "\\vphantom{\\frac{a}{b}}",
+        "allowZeroWidth": true,
+        "reason": "An intentional vertical phantom reserves height and baseline but has zero width and no ink. All other positive-height and finite-metric checks remain required."
+      },
+      "nativeMetrics": {
+        "width": 2,
+        "height": 68.0762,
+        "baseline": 41.9688
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "pure_phantom",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:1",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:2,mphantom:1,mrow:1",
+      "referenceConstructs": "brace:0,phantom:1",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 28.8519,
+        "height": 68.0762,
+        "baseline": 41.9688
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "pure_hspace",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mrow:1,mspace:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_zero_argument_energy",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:6,mn:3,mo:2,mrow:1,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 212.75,
+        "height": 68.0762,
+        "baseline": 41.9688
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_single_argument_square",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:3,mn:5,mo:4,mrow:2,msup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 225.7,
+        "height": 39.5841,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_two_argument_fraction",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:7,mo:4,mrow:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 174.083,
+        "height": 68.0762,
+        "baseline": 41.9688
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_nine_argument_matrix",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:1,mn:9,mo:3,mrow:2,mstyle:9,mtable:1,mtd:9,mtr:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 199.781,
+        "height": 101.464,
+        "baseline": 57.5877
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_optional_root",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "0",
+      "classification": "native_accept_reference_limited",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:2,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 228.922,
+        "height": 53.4905,
+        "baseline": 45.5999
+      },
+      "referenceLimitation": {
+        "source": "\\newcommand{\\pulseRoot}[2][2]{\\sqrt[#1]{#2}}\\pulseRoot{x^2}+\\pulseRoot[3]{y^3}=x+y",
+        "expectedAcceptance": false,
+        "reason": "Pinned KaTeX 0.16.22 does not implement the optional first-argument default in newcommand. The original input remains rejected in the recorded reference output; native support is a separate required contract.",
+        "upstreamSource": "https://github.com/KaTeX/KaTeX/blob/v0.16.22/src/macros.js#L148"
+      },
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_empty_optional_default",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "0",
+      "classification": "native_accept_reference_limited",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 153.573,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": {
+        "source": "\\newcommand{\\pulseSign}[2][]{#1#2}\\pulseSign{x}+\\pulseSign[-]{y}=x-y",
+        "expectedAcceptance": false,
+        "reason": "Pinned KaTeX 0.16.22 does not implement the optional first-argument default in newcommand, including an empty default. This is not relabeled as invalid native input.",
+        "upstreamSource": "https://github.com/KaTeX/KaTeX/blob/v0.16.22/src/macros.js#L148"
+      },
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_nested_arguments",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:2,radical:0,script:3,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:2,mi:4,mn:3,mo:1,mrow:1,msup:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 106.802,
+        "height": 86.971,
+        "baseline": 51.4162
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_single_token_arguments",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:4,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:4,mi:4,mn:4,mo:3,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 167.852,
+        "height": 48.7322,
+        "baseline": 31.7099
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_direct_name_definition",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:5,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:8,mn:7,mo:5,mrow:2,msup:5",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 357.931,
+        "height": 39.5841,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_group_renewal",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:4,mo:3,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 155.542,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_provide_existing_user",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:2,mn:2,mo:1,mrow:1,msup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 84.5166,
+        "height": 39.5841,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_provide_existing_builtin",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:4,mn:3,mo:4,mrow:3,msup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 194.66,
+        "height": 39.5841,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_font_template",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:9,mn:1,mo:9,mrow:2,msub:1,munderover:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 244.983,
+        "height": 86.995,
+        "baseline": 56.1652
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "script:1"
+    },
+    {
+      "id": "macro_argument_scripts",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:2,environment:0,fence:0,accent:1,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:6,mn:2,mo:4,mover:1,mrow:2,msub:1,munderover:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 136.386,
+        "height": 86.995,
+        "baseline": 56.1652
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_group_local_definition",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:3,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:3,mn:3,mo:2,mrow:1,msup:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 140.275,
+        "height": 39.5841,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_script_transform",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:13,mo:10,mrow:4,msubsup:1,msup:1,mtext:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 311.112,
+        "height": 58.538,
+        "baseline": 43.5142
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "normal:2,script:1"
+    },
+    {
+      "id": "macro_isolation_define",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:2,mn:4,mo:3,mrow:1,msup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 168.686,
+        "height": 39.5841,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_isolation_use_undefined",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_environment_local_renewal",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:1,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:3,mn:2,mo:1,mrow:1,mstyle:4,mtable:1,mtd:4,mtr:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 94.869,
+        "height": 64.2734,
+        "baseline": 38.9922
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "font_calligraphic_functional",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:4,environment:0,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:8,mn:4,mo:12,mrow:2,msubsup:1,msup:3,mtext:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 347.945,
+        "height": 58.538,
+        "baseline": 43.5142
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "normal:1,script:1"
+    },
+    {
+      "id": "font_script_transform",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:7,mo:9,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 262.464,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "script:3"
+    },
+    {
+      "id": "font_fraktur_algebra",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:1,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:8,mo:8,mrow:3,msup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 291.395,
+        "height": 40.8232,
+        "baseline": 33.8717
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "double-struck:1,fraktur:1"
+    },
+    {
+      "id": "font_sans_distribution",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:3,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:9,mn:1,mo:7,mrow:2,msub:2,msubsup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 243.65,
+        "height": 46.5952,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "sans-serif:1"
+    },
+    {
+      "id": "font_monospace_identifier",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:10,mn:2,mo:3,mrow:4,msub:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 231.445,
+        "height": 36.4291,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "monospace:8"
+    },
+    {
+      "id": "font_boldsymbol_vectors",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:3,mn:1,mo:2,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 121.918,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "bold-italic:3"
+    },
+    {
+      "id": "font_bm_gradient",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:3,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:9,mn:1,mo:5,mrow:2,msub:3",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 223.156,
+        "height": 36.4291,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "bold:1,bold-italic:3"
+    },
+    {
+      "id": "font_bold_digits_operators",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:3,mn:3,mo:2,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 147.992,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "bold:3"
+    },
+    {
+      "id": "font_nested_styles",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:5,mo:2,mrow:1,msub:1,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 134.8,
+        "height": 45.8765,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "fraktur:1,monospace:1,sans-serif:1,script:2"
+    },
+    {
+      "id": "font_text_not_mapped",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:2,mo:2,mrow:1,msub:1,mtext:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 247.697,
+        "height": 36.4291,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "script:1"
+    },
+    {
+      "id": "font_scope_restore",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:6,mn:1,mo:6,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 271.788,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "fraktur:1,monospace:1,sans-serif:1"
+    },
+    {
+      "id": "font_family_macro_composition",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:1,radical:0,script:1,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mfrac:1,mi:5,mn:2,mo:1,mrow:1,msup:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 134.463,
+        "height": 68.0762,
+        "baseline": 41.9688
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "bold-italic:2,sans-serif:1,script:1"
+    },
+    {
+      "id": "macro_duplicate_definition",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_renew_undefined",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_missing_argument",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_bad_parameter_reference",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_ten_arguments",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:1,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_group_scope_escape",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_builtin_new_redefinition",
+      "expectation": "invalid",
+      "nativeAccepted": "0",
+      "referenceAccepted": "0",
+      "classification": "both_reject",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_builtin_renewal_unsupported",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:2,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_primitive_def_unsupported",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:2,mn:4,mo:3,mrow:1,msup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_primitive_let_unsupported",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:4,mn:3,mo:4,mrow:3,msup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_definitions_at_limit",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mn:3,mo:2,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 128.305,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_definitions_over_limit",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mn:3,mo:2,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_calls_at_limit",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:0,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:1,mn:2,mo:2,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 103.566,
+        "height": 30.1367,
+        "baseline": 23.8047
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_calls_over_limit",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:1,mn:2,mo:2,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_depth_at_limit",
+      "expectation": "native_accept",
+      "nativeAccepted": "1",
+      "referenceAccepted": "1",
+      "classification": "both_accept",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "fraction:0,radical:0,script:2,environment:0,fence:0,accent:0,decoration:0,arrow:0,brace:0,phantom:0",
+      "referenceMathmlTags": "math:1,mi:2,mn:4,mo:3,mrow:1,msup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 168.686,
+        "height": 39.5841,
+        "baseline": 33.2521
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_depth_over_limit",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:2,mn:4,mo:3,mrow:1,msup:2",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "macro_expanded_size_over_limit",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:2,mn:1,mo:2,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    },
+    {
+      "id": "formula_raw_size_over_limit",
+      "expectation": "native_fallback",
+      "nativeAccepted": "0",
+      "referenceAccepted": "1",
+      "classification": "documented_native_fallback",
+      "problems": [],
+      "structureDifferences": [],
+      "nativeStructures": "",
+      "referenceMathmlTags": "math:1,mi:1,mn:2051,mo:2051,mrow:1",
+      "referenceConstructs": "brace:0,phantom:0",
+      "metricsException": null,
+      "nativeMetrics": {
+        "width": 0,
+        "height": 0,
+        "baseline": 0
+      },
+      "referenceLimitation": null,
+      "referenceFontVariantsInformational": "-"
+    }
+  ]
+}

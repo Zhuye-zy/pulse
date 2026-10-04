@@ -101,6 +101,20 @@ int main() {
             !Get(StringId::UpdateClickToInstall).empty() && !Get(StringId::UpdateCancelled).empty() &&
             !Get(StringId::UpdateBusy).empty() && !Get(StringId::UpdateInstallFailed).empty());
     }
+    {
+        // Ids above the last one Get() serves come back empty: keep kLastString current.
+        bool newest = true;
+        for (const auto language : {L"zh-CN", L"zh-TW", L"en-US"}) {
+            SetLanguage(language);
+            for (const auto id : {StringId::LanguageZhTW, StringId::SettingsAutoUpdate,
+                                  StringId::SettingsAutoUpdateDesc, StringId::UpdateDescManual,
+                                  StringId::SettingsUiFontSize, StringId::UiFontLarger})
+                newest &= !Get(id).empty();
+        }
+        SetLanguage(L"zh-TW");
+        newest &= Get(StringId::SettingsAutoUpdate) == L"\u81EA\u52D5\u6AA2\u67E5\u66F4\u65B0";  // 自動檢查更新
+        passed &= Report("newest string ids load in every language", newest);
+    }
     SetLanguage(L"zh-CN");
     passed &= Report("zh-CN quick access and compatibility resources",
         Get(StringId::PinQuickAccess) == L"固定到快速访问" &&
@@ -149,7 +163,7 @@ int main() {
                      Get(StringId::TooltipCloseTab) == L"Close tab" &&
                      Get(StringId::OpenTerminalHere) == L"Open terminal here" &&
                      Get(StringId::SettingsAboutDiagnostics) == L"About & diagnostics" &&
-                     Get(StringId::DownloadUpdate) == L"Download and install");
+                     Get(StringId::DownloadUpdate) == L"Update and restart");
     passed &= Report("en-US recycle and batch rename",
                      Get(StringId::RecycleBin) == L"Recycle Bin" &&
                      Get(StringId::BatchRename) == L"Batch rename" &&
@@ -172,6 +186,43 @@ int main() {
                      IsLanguageId(L"system") && IsLanguageId(L"zh-CN") &&
                      IsLanguageId(L"en-US") && !IsLanguageId(L"english") &&
                      std::wstring(LanguageId(Language::EnUS)) == L"en-US");
+    // Text reported by helper processes (index service, pulse_shell) in Simplified.
+    SetLanguage(L"en-US");
+    passed &= Report("en-US service status with count and segment",
+        ServiceText(L"已索引 1,234 项 · 实时更新") == L"1,234 items indexed · Live updates");
+    passed &= Report("en-US service pattern keeps the path",
+        ServiceText(L"正在重建 D:\\设计资料 的索引…") == L"Rebuilding the index for D:\\设计资料…");
+    passed &= Report("en-US Win32 error keeps the system message",
+        ServiceText(L"错误 5：拒绝访问。") == L"Error 5: 拒绝访问。");
+    passed &= Report("en-US network state segments",
+        ServiceText(L"离线 · 仍可搜索") == L"Offline · Still searchable");
+    passed &= Report("en-US shell start failure",
+        ServiceText(L"无法启动 pulse_shell.exe（错误 2）") == L"Could not start pulse_shell.exe (error 2)");
+    passed &= Report("en-US unknown service text passes through",
+        ServiceText(L"某个未知的状态") == L"某个未知的状态" && !IsKnownServiceText(L"某个未知的状态") &&
+        IsKnownServiceText(L"已同步 · 128,420 项") && ServiceText(L"Ready") == L"Ready");
+    SetLanguage(L"zh-TW");
+    {
+        // The path is a capture: it keeps its Simplified characters while the template converts.
+        const std::wstring rebuilt = ServiceText(L"D:\\设计资料 的变更跟踪暂不可用，稍后重试");
+        const std::wstring indexed = ServiceText(L"已索引 1,234 项 · 实时更新");
+        passed &= Report("zh-TW service text converts the template, not the path",
+            rebuilt.find(L"D:\\设计资料 ") == 0 && rebuilt.find(L"變更") != std::wstring::npos);
+        passed &= Report("zh-TW service status keeps counts",
+            indexed.find(L"1,234") != std::wstring::npos && indexed.find(L"項") != std::wstring::npos);
+    }
+    passed &= Report("zh-TW operation errors keep real file names",
+        ServiceErrorText(L"拒绝访问。 | D:\\软件说明.txt") == L"拒绝访问。 | D:\\软件说明.txt" &&
+        ServiceErrorText(L"目标文件夹不存在 | D:\\软件说明.txt").find(L" | D:\\软件说明.txt") != std::wstring::npos &&
+        ServiceErrorText(L"目标文件夹不存在 | D:\\软件说明.txt") != L"目标文件夹不存在 | D:\\软件说明.txt");
+    SetLanguage(L"en-US");
+    passed &= Report("en-US operation error localizes the message only",
+        ServiceErrorText(L"没有权限在此位置新建") != L"没有权限在此位置新建" &&
+        ServiceErrorText(L"软件说明.txt 无法处理 | D:\\软件说明.txt") == L"软件说明.txt 无法处理 | D:\\软件说明.txt");
+    SetLanguage(L"zh-CN");
+    passed &= Report("zh-CN service text is unchanged",
+        ServiceText(L"已索引 1,234 项 · 实时更新") == L"已索引 1,234 项 · 实时更新");
+
     SetLanguage(L"system");
     passed &= Report("system language resolves to a shipped locale",
                      effective_language() == Language::ZhCN ||

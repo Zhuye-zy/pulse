@@ -1,4 +1,5 @@
 #include "crash_reporter.h"
+#include "runtime_log.h"
 #include "pulse_version.h"
 
 #include <dbghelp.h>
@@ -322,6 +323,10 @@ bool Initialize(const Config& config) noexcept {
         g_diagnostics_root.clear();
         return false;
     }
+    const std::wstring role = RoleToken(config.role);
+    std::string component;
+    for (wchar_t c : role) component.push_back(static_cast<char>(c));
+    (void)diagnostics::runtime::Initialize(root, component.c_str());
     g_started_tick = GetTickCount64();
     QueryOsVersion();
     RotateDiagnostics();
@@ -333,6 +338,7 @@ bool Initialize(const Config& config) noexcept {
 }
 
 void Shutdown() noexcept {
+    diagnostics::runtime::Shutdown();
     if (!g_initialized) return;
     SetUnhandledExceptionFilter(g_previous_filter);
     g_initialized = false;

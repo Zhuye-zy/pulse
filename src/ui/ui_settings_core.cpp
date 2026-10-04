@@ -15,10 +15,7 @@ void MainRenderer::DrawSettingsCore(const WindowViewModel& vm, const D2D1_RECT_F
     };
     auto draw_card=[&](D2D1_RECT_F r) {
         if(r.bottom<=r.top) return;
-        const bool glass=vm.backdrop_enabled && (vm.window_effect==WindowEffect::Glass ||
-            (vm.wallpaper_look==100 && vm.window_effect!=WindowEffect::None && vm.background_image.empty()));
-        MakeBrush(dc,WithAlpha(theme.surface_card,card_alpha_),brFillInput_);
-        MakeBrush(dc,glass ? WithAlpha(HexColor(0xFFFFFF),vm.dark ? 0.24f : 0.58f) : theme.stroke_card,brStrokeCard_);
+        MakeBrush(dc,WithAlpha(theme.surface_card,card_alpha_),brFillInput_); MakeBrush(dc,theme.stroke_card,brStrokeCard_);
         dc->FillRoundedRectangle(D2D1::RoundedRect(r,8*scale_,8*scale_),brFillInput_.get());
         dc->DrawRoundedRectangle(D2D1::RoundedRect(r,8*scale_,8*scale_),brStrokeCard_.get(),1);
     };
@@ -144,7 +141,7 @@ void MainRenderer::DrawSettingsCore(const WindowViewModel& vm, const D2D1_RECT_F
         if(vm.settings_bloom) {vm.settings_bloom->SetDisk(lay.accent_picker);vm.settings_bloom->Draw(dc,theme);}
         divider(lay.accent_card);
         const I effects[]={I::EffectNone,I::EffectAcrylic,I::EffectMica,I::EffectMicaAlt,I::EffectGlass};
-        const I languages[]={I::LanguageSystem,I::LanguageZhCN,I::LanguageEnUS};
+        const I languages[]={I::LanguageSystem,I::LanguageZhCN,I::LanguageZhTW,I::LanguageEnUS};
         const auto dropdown=[&](D2D1_RECT_F r,D2D1_RECT_F c,I title,I desc,const std::wstring& value,int id) {
             label(r,l10n::Get(title),l10n::Get(desc),id==0 ? L"\xE790" : L"\xE8C1",c.left<r.left+100*scale_ ? r.right-16*scale_ : c.left-12*scale_);
             fluent::ButtonSpec control{};
@@ -159,27 +156,23 @@ void MainRenderer::DrawSettingsCore(const WindowViewModel& vm, const D2D1_RECT_F
             const bool enabled=i==0 || compat::ModernWindows();
             const bool selected=i==static_cast<int>(compat::ModernWindows() ? vm.window_effect : WindowEffect::None);
             const bool hovered=enabled && IsHovered(vm,H::SettingsEffect,i);
-            const float tint[]={0.0f,0.22f,0.065f,0.16f,0.09f};
+            const float tint[]={0.0f,0.22f,0.065f,0.16f};
             auto background=BlendOver(WithAlpha(theme.accent,tint[i]),theme.surface_title);
             if(!enabled) background=BlendOver(WithAlpha(theme.surface_sheet,0.6f),background);
             MakeBrush(dc,background,brFillHover_);
             dc->FillRoundedRectangle(D2D1::RoundedRect(preview,6*scale_,6*scale_),brFillHover_.get());
             // A small window silhouette explains the material, not a fake DWM surface.
             dc->PushAxisAlignedClip(preview,D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-            if(i==1 || i==3 || i==4) {
+            if(i==1 || i==3) {
                 MakeBrush(dc,WithAlpha(theme.accent,vm.dark ? 0.18f : 0.13f),brFillHover_);
                 dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(preview.right-18*scale_,preview.top+11*scale_),
                     36*scale_,26*scale_),brFillHover_.get());
             }
             const float inset=10*scale_;
             auto window=D2D1::RectF(preview.left+inset,preview.top+9*scale_,preview.right-inset,preview.bottom-9*scale_);
-            const float plate_alpha=i==4 ? 0.30f : i==1 ? 0.48f : i==3 ? 0.72f : 0.96f;
+            const float plate_alpha=i==1 ? 0.48f : i==3 ? 0.72f : 0.96f;
             MakeBrush(dc,WithAlpha(theme.surface_card,plate_alpha),brFillInput_);
             dc->FillRoundedRectangle(D2D1::RoundedRect(window,3*scale_,3*scale_),brFillInput_.get());
-            if(i==4) {
-                MakeBrush(dc,WithAlpha(HexColor(0xFFFFFF),0.58f),brStrokeCard_);
-                dc->DrawRoundedRectangle(D2D1::RoundedRect(window,3*scale_,3*scale_),brStrokeCard_.get(),scale_);
-            }
             MakeBrush(dc,WithAlpha(theme.text_secondary,0.30f),brTextSecondary_);
             FillRoundedRect(dc,brTextSecondary_.get(),window.left+6*scale_,window.top+6*scale_,
                 (std::min)(18*scale_,(window.right-window.left)*0.18f),2*scale_,scale_);
@@ -204,9 +197,87 @@ void MainRenderer::DrawSettingsCore(const WindowViewModel& vm, const D2D1_RECT_F
         divider(lay.effect_card);
         dropdown(lay.language_card,lay.language_choice,I::SettingsLanguage,I::SettingsLanguageDesc,l10n::Get(languages[vm.settings_language]),1);divider(lay.language_card);
         const I text_render[]={I::TextRenderAuto,I::TextRenderSharp,I::TextRenderSmooth};const int text_render_values[]={0,1,2};
-        segmented(lay.text_render_card,lay.text_render_row,text_render,text_render_values,vm.settings_text_render,H::SettingsTextRender,I::SettingsTextRender,I::SettingsTextRenderDesc);
+        segmented(lay.text_render_card,lay.text_render_row,text_render,text_render_values,vm.settings_text_render,H::SettingsTextRender,I::SettingsTextRender,I::SettingsTextRenderDesc);divider(lay.text_render_card);
+        const I ui_font_size[]={I::UiFontSmall,I::UiFontDefault,I::UiFontLarge,I::UiFontLarger};const int ui_font_size_values[]={90,100,112,125};
+        segmented(lay.ui_font_size_card,lay.ui_font_size_row,ui_font_size,ui_font_size_values,vm.settings_ui_font_scale,H::SettingsUiFontSize,I::SettingsUiFontSize,I::SettingsUiFontSizeDesc,4,L"\xE8D2");
+        {
+            text(l10n::Get(I::SettingsIntegration),lay.integration_section);
+            draw_card(lay.integration_card);
+            const bool master_on=vm.settings_integration_enabled;
+            auto hover_fill=[&](D2D1_RECT_F r) {
+                MakeBrush(dc,theme.fill_hover,brFillHover_);
+                FillRoundedRect(dc,brFillHover_.get(),r.left+2*scale_,r.top+2*scale_,r.right-r.left-4*scale_,r.bottom-r.top-4*scale_,6*scale_);
+            };
+            {
+                const auto r=lay.default_manager_row;
+                fluent::ControlState state{};
+                state.checked=master_on;state.hovered=IsHovered(vm,H::SettingsIntegration,0);
+                if(state.hovered) hover_fill(r);
+                label(r,l10n::Get(I::IntegrationMaster),L"",L"\xEC50",lay.integration_text_right);
+                painter_.DrawWrappedCaption(l10n::Get(I::IntegrationMasterDesc),D2D1::Point2F(r.left+54*scale_,r.top+35*scale_),
+                    (std::max)(40*scale_,lay.integration_text_right-r.left-54*scale_),theme.text_secondary);
+                const auto badge=MakeIntegrationBadge(vm);
+                fluent::BadgeSpec pill{};
+                pill.bounds=lay.integration_badge;pill.text=badge.text;pill.kind=badge.kind;
+                painter_.DrawBadge(pill);
+                painter_.DrawSwitch(D2D1::RectF(r.right-60*scale_,r.top+16*scale_,r.right-16*scale_,r.top+48*scale_),L"",state);
+                if(lay.integration_bar.bottom<=lay.integration_bar.top) divider(r);
+            }
+            if(lay.integration_bar.bottom>lay.integration_bar.top) {
+                const bool failed=vm.settings_integration_state==3;
+                const auto message=IntegrationProblemMessage(vm);
+                fluent::InfoBarSpec bar{};
+                bar.bounds=lay.integration_bar;
+                bar.title=l10n::Get(failed ? I::IntegrationFailTitle : I::IntegrationDriftTitle);
+                bar.message=message;
+                bar.kind=failed ? fluent::InfoBarKind::Error : fluent::InfoBarKind::Warning;
+                bar.show_close=false;
+                painter_.DrawInfoBar(bar);
+                if(lay.integration_retry.bottom>lay.integration_retry.top)
+                    button(lay.integration_retry,l10n::Get(failed ? I::IntegrationRetry : I::IntegrationReapply),H::SettingsIntegration,5,true);
+                if(lay.integration_restore.bottom>lay.integration_restore.top)
+                    button(lay.integration_restore,l10n::Get(I::IntegrationRestore),H::SettingsIntegration,6);
+            }
+            {
+                const auto r=lay.integration_list_head;
+                painter_.DrawText(l10n::Get(I::IntegrationScope),D2D1::RectF(r.left+54*scale_,r.top+8*scale_,r.right-16*scale_,r.bottom),
+                    compositor_->SmallFormat(),theme.text_secondary);
+            }
+            auto item=[&](D2D1_RECT_F r,I title,I desc,const wchar_t* icon,bool on,int action) {
+                fluent::ControlState state{};
+                state.checked=on;state.hovered=IsHovered(vm,H::SettingsIntegration,action);
+                if(state.hovered) hover_fill(D2D1::RectF(r.left+40*scale_,r.top,r.right-6*scale_,r.bottom));
+                const float x=r.left+54*scale_, text_left=r.left+112*scale_;
+                painter_.DrawCheckBox(D2D1::RectF(x,r.top+11*scale_,x+20*scale_,r.top+31*scale_),L"",state);
+                DrawIconText(x+30*scale_,r.top+11*scale_,20*scale_,20*scale_,icon,L"",theme.text_secondary,master_on ? 0.85f : 0.6f);
+                painter_.DrawText(l10n::Get(title),D2D1::RectF(text_left,r.top+9*scale_,r.right-16*scale_,r.top+31*scale_),
+                    compositor_->TextFormat(),master_on ? theme.text : theme.text_secondary);
+                painter_.DrawWrappedCaption(l10n::Get(desc),D2D1::Point2F(text_left,r.top+31*scale_),
+                    (std::max)(40*scale_,r.right-16*scale_-text_left),theme.text_secondary);
+            };
+            item(lay.startup_row[2],I::IntegrationFolders,I::IntegrationFoldersDesc,L"\xE8B7",vm.settings_integration_folders,1);
+            item(lay.this_pc_row,I::SettingsThisPc,I::SettingsThisPcDesc,L"\xE7F4",vm.settings_integration_this_pc,3);
+            item(lay.win_e_row,I::SettingsWinE,I::SettingsWinEDesc,L"\xE765",vm.settings_integration_win_e,2);
+            item(lay.explorer_windows_row,I::IntegrationExperimental,I::IntegrationExperimentalDesc,L"\xE8A7",vm.settings_integration_experimental,4);
+            for(int i=0;i<4;++i) {
+                fluent::BadgeSpec chip{};
+                chip.bounds=lay.integration_chip[i];chip.text=l10n::Get(kIntegrationChips[i]);
+                chip.kind=i==0 ? fluent::BadgeKind::Warning : fluent::BadgeKind::Neutral;
+                painter_.DrawBadge(chip);
+            }
+            if(lay.integration_hint.bottom>lay.integration_hint.top) {
+                const auto r=lay.integration_hint;
+                divider(D2D1::RectF(r.left,r.top-1,r.right,r.top-1));
+                DrawIconText(r.left+54*scale_,r.top+5*scale_,16*scale_,16*scale_,L"\xE946",L"",theme.text_secondary,0.8f);
+                painter_.DrawWrappedCaption(IntegrationHint(vm),D2D1::Point2F(r.left+78*scale_,r.top+4*scale_),
+                    (std::max)(40*scale_,r.right-16*scale_-r.left-78*scale_),theme.text_secondary);
+            }
+        }
         toggle(lay.startup_row[0],I::SettingsLaunch,I::SettingsLaunchDesc,L"\xE7E8",vm.settings_launch_on_startup,1);divider(lay.startup_row[0]);
+        toggle(lay.start_in_tray_row,I::SettingsStartInTray,I::SettingsStartInTrayDesc,L"\xE921",vm.settings_start_in_tray,27);divider(lay.start_in_tray_row);
         toggle(lay.startup_row[1],I::SettingsKeepRunning,I::SettingsKeepRunningDesc,L"\xE737",vm.settings_keep_running,2);divider(lay.startup_row[1]);
+        const I notify_icon[]={I::NotifyIconAlways,I::NotifyIconBackground,I::NotifyIconNever};const int notify_values[]={0,1,2};
+        segmented(lay.notify_icon_card,lay.notify_icon_row,notify_icon,notify_values,vm.settings_notify_icon,H::SettingsNotifyIcon,I::SettingsNotifyIcon,I::SettingsNotifyIconDesc,3,L"\xE8A1");divider(lay.notify_icon_card);
         {
             // Default location: buttons sit beside the text, or below it when narrow.
             const bool below=lay.home_folder_choose.top>lay.home_folder_card.top+40*scale_;
@@ -220,7 +291,8 @@ void MainRenderer::DrawSettingsCore(const WindowViewModel& vm, const D2D1_RECT_F
         const I startup_open[]={I::StartupOpenLastTabs,I::OpenDefaultLocation};const int two_values[]={0,1};
         segmented(lay.startup_open_card,lay.startup_open_row,startup_open,two_values,vm.settings_startup_open,H::SettingsStartupOpen,I::SettingsStartupOpen,I::SettingsStartupOpenDesc,2,L"\xE81C");divider(lay.startup_open_card);
         const I new_tab_open[]={I::NewTabOpenCurrent,I::OpenDefaultLocation};
-        segmented(lay.new_tab_open_card,lay.new_tab_open_row,new_tab_open,two_values,vm.settings_new_tab_open,H::SettingsNewTabOpen,I::SettingsNewTabOpen,I::SettingsNewTabOpenDesc,2,L"\xE710");
+        segmented(lay.new_tab_open_card,lay.new_tab_open_row,new_tab_open,two_values,vm.settings_new_tab_open,H::SettingsNewTabOpen,I::SettingsNewTabOpen,I::SettingsNewTabOpenDesc,2,L"\xE710");divider(lay.new_tab_open_card);
+        toggle(lay.close_last_tab_row,I::SettingsCloseLastTab,I::SettingsCloseLastTabDesc,L"\xE711",vm.settings_close_last_tab,26);
         const I density[]={I::SettingsDensityCompact,I::SettingsDensityStandard,I::SettingsDensityRoomy};const int heights[]={28,34,40};
         segmented(lay.density_card,lay.density_row,density,heights,vm.settings_row_height,H::SettingsDensity,I::SettingsRowHeight,I::SettingsRowHeightDesc);divider(lay.density_card);
         toggle(lay.performance_row,I::SettingsShowPerformance,I::SettingsShowPerformanceDesc,L"\xE946",vm.settings_show_performance,4);divider(lay.performance_row);
@@ -228,27 +300,29 @@ void MainRenderer::DrawSettingsCore(const WindowViewModel& vm, const D2D1_RECT_F
         toggle(lay.list_style_row[1],I::ListZebraRows,I::ListZebraRowsDesc,L"\xE8FD",vm.settings_list_zebra_rows,18);divider(lay.list_style_row[1]);
         toggle(lay.list_style_row[2],I::ListSizeBar,I::ListSizeBarDesc,L"\xE9D2",vm.settings_list_size_bar,19);divider(lay.list_style_row[2]);
         toggle(lay.list_style_row[3],I::ListTagNameColor,I::ListTagNameColorDesc,L"\xE8EC",vm.settings_list_tag_names,22);divider(lay.list_style_row[3]);
+        toggle(lay.list_style_row[4],I::ListSelectionOutline,I::ListSelectionOutlineDesc,L"\xE73E",vm.settings_list_selection_outline,33);divider(lay.list_style_row[4]);
         const I folder_sort[]={I::FolderSortTop,I::FolderSortFollow,I::FolderSortMixed};const int folder_sort_values[]={0,1,2};
-        segmented(lay.folder_sort_card,lay.folder_sort_row,folder_sort,folder_sort_values,vm.settings_folder_sort,H::SettingsFolderSort,I::SettingsFolderSort,I::SettingsFolderSortDesc);
+        segmented(lay.folder_sort_card,lay.folder_sort_row,folder_sort,folder_sort_values,vm.settings_folder_sort,H::SettingsFolderSort,I::SettingsFolderSort,I::SettingsFolderSortDesc);divider(lay.folder_sort_card);
+        toggle(lay.confirm_delete_row,I::SettingsConfirmDelete,I::SettingsConfirmDeleteDesc,L"\xE74D",vm.settings_confirm_delete,32);
         if(lay.preview_group.bottom>lay.preview_group.top) {
             // Quick Look: read-only list of supported formats + system extension status.
-            const bool zh=l10n::effective_language()==l10n::Language::ZhCN;
-            text(zh ? L"快速预览" : L"Quick Look",lay.preview_section);
+            const bool zh=l10n::IsChinese();
+            text(l10n::Pick(L"快速预览", L"Quick Look"),lay.preview_section);
             draw_card(lay.preview_group);
             const unsigned codecs=vm.settings_preview_codecs;
             const bool detected=(codecs & kPreviewCodecsDetected)!=0;
             int installed=0;
             for(int i=0;i<kPreviewCodecCount;++i) if(codecs & (1u<<i)) ++installed;
             const auto count=std::to_wstring(PreviewFormatCount());
-            std::wstring summary=zh ? L"共 "+count+L" 种格式" : count+L" formats";
-            if(detected) summary+=zh ? L" · 系统扩展已安装 "+std::to_wstring(installed)+L"/"+std::to_wstring(kPreviewCodecCount)
+            std::wstring summary=zh ? l10n::Cn(L"共 ")+count+l10n::Cn(L" 种格式") : count+L" formats";
+            if(detected) summary+=zh ? l10n::Cn(L" · 系统扩展已安装 ")+std::to_wstring(installed)+L"/"+std::to_wstring(kPreviewCodecCount)
                                      : L" · "+std::to_wstring(installed)+L" of "+std::to_wstring(kPreviewCodecCount)+L" system extensions installed";
             const auto head=lay.disclosure[2];
             if(IsHovered(vm,H::SettingsDisclosure,2)) {
                 MakeBrush(dc,theme.fill_hover,brFillHover_);
                 FillRoundedRect(dc,brFillHover_.get(),head.left+2*scale_,head.top+2*scale_,head.right-head.left-4*scale_,head.bottom-head.top-4*scale_,6*scale_);
             }
-            label(head,zh ? L"支持的格式" : L"Supported formats",summary,L"\xE890");
+            label(head,l10n::Pick(L"支持的格式", L"Supported formats"),summary,L"\xE890");
             const bool open=(vm.settings_expanded & 4u)!=0;
             DrawIconText(head.right-38*scale_,head.top+22*scale_,18*scale_,18*scale_,open ? L"\xE70D" : L"\xE76C",L"",theme.text_secondary,0.75f);
             if(open) {
@@ -289,7 +363,7 @@ void MainRenderer::DrawSettingsCore(const WindowViewModel& vm, const D2D1_RECT_F
                     const auto info=PreviewCodec(i);
                     const auto& button_rect=lay.preview_codec_button[i];
                     const bool has=(codecs & (1u<<i))!=0;
-                    const std::wstring status=!detected ? L"" : has ? (zh ? L"已安装" : L"Installed") : (zh ? L"未安装" : L"Not installed");
+                    const std::wstring status=!detected ? L"" : has ? (l10n::Pick(L"已安装", L"Installed")) : (l10n::Pick(L"未安装", L"Not installed"));
                     const float pill_w=status.empty() ? 0.0f : (zh ? 56.0f : (has ? 76.0f : 96.0f))*scale_;
                     const float pill_right=button_rect.right>button_rect.left ? button_rect.left-10*scale_ : r.right-16*scale_;
                     label(r,info.name,info.description,i==1 || i==2 ? L"\xE714" : L"\xE91B",pill_right-pill_w-12*scale_);
@@ -299,7 +373,7 @@ void MainRenderer::DrawSettingsCore(const WindowViewModel& vm, const D2D1_RECT_F
                         FillRoundedRect(dc,brFillHover_.get(),pill.left,pill.top,pill.right-pill.left,pill.bottom-pill.top,11*scale_);
                         painter_.DrawText(status,pill,compositor_->SmallFormat(),has ? ok_color : missing_color,fluent::HorizontalAlignment::Center);
                     }
-                    if(button_rect.right>button_rect.left) button(button_rect,zh ? L"获取" : L"Get",H::SettingsPreviewStore,i,true);
+                    if(button_rect.right>button_rect.left) button(button_rect,l10n::Pick(L"获取", L"Get"),H::SettingsPreviewStore,i,true);
                     if(i+1<kPreviewCodecCount) divider(r);
                 }
             }
@@ -353,8 +427,6 @@ void MainRenderer::DrawSettingsCore(const WindowViewModel& vm, const D2D1_RECT_F
             draw_card(lay.wallpaper_blur_card);slider(lay.wallpaper_blur_card,lay.wallpaper_blur_row,vm.wallpaper_blur,kWallpaperBlurMax,blur_ticks,blurs,H::SettingsWallpaperBlur,I::SettingsWallpaperBlur,I::SettingsWallpaperBlurDesc,L" px");
             const I sizes[]={I::SettingsTraySmall,I::SettingsTrayStandard,I::SettingsTrayLarge};const int icons[]={40,48,56};
             draw_card(lay.tray_icon_card);segmented(lay.tray_icon_card,lay.tray_icon_row,sizes,icons,vm.settings_tray_icon,H::SettingsTrayIcon,I::SettingsTrayIcon,I::SettingsTrayIconDesc);
-            draw_card(lay.startup_row[2]);toggle(lay.startup_row[2],I::SettingsOpenFolders,I::SettingsOpenFoldersDesc,L"\xE8B7",vm.settings_open_folders,3);
-            draw_card(lay.win_e_row);toggle(lay.win_e_row,I::SettingsWinE,I::SettingsWinEDesc,L"\xE765",vm.settings_win_e,20);
             draw_card(lay.shell_tags_row);toggle(lay.shell_tags_row,I::SettingsShellTags,I::SettingsShellTagsDesc,L"\xE8EC",vm.settings_shell_tags,21);
             draw_card(lay.hidden_files_row);toggle(lay.hidden_files_row,I::SettingsShowHidden,I::SettingsShowHiddenDesc,L"\xE890",vm.settings_show_hidden_files,5);
             // Hidden + system entries: File Explorer keeps these behind a second option.
@@ -365,7 +437,10 @@ void MainRenderer::DrawSettingsCore(const WindowViewModel& vm, const D2D1_RECT_F
             draw_card(lay.hints_reset_row);label(lay.hints_reset_row,l10n::Get(I::SettingsHintsReset),
                 l10n::Get(vm.settings_tips_seen ? I::SettingsHintsResetDesc : I::HintsResetDone),L"\xE72C",lay.hints_reset_button.left-8*scale_);
             button(lay.hints_reset_button,l10n::Get(I::HintsResetButton),H::SettingsToggle,25,false,vm.settings_tips_seen);
-            draw_card(lay.blank_click_row);toggle(lay.blank_click_row,I::SettingsBlankClickBack,I::SettingsBlankClickBackDesc,L"\xE72B",vm.settings_blank_click_go_back,7);
+            {
+                const I blank_click[]={I::SettingsBlankClickOff,I::Back,I::Up};const int blank_click_values[]={0,1,2};
+                draw_card(lay.blank_click_row);segmented(lay.blank_click_row,lay.blank_click_choice,blank_click,blank_click_values,vm.settings_blank_click_action,H::SettingsBlankClick,I::SettingsBlankClickBack,I::SettingsBlankClickBackDesc,3,L"\xE72B");
+            }
             draw_card(lay.change_tracking_row);toggle(lay.change_tracking_row,I::SettingsChangeTracking,I::SettingsChangeTrackingDesc,L"\xE823",vm.settings_change_tracking,8);
             const I days[]={I::ChangeToday,I::ChangeLast3Days,I::ChangeLast7Days};const int day_values[]={1,3,7};
             draw_card(lay.change_days_row);segmented(lay.change_days_row,lay.change_days,days,day_values,vm.settings_change_days,H::SettingsChangeDays,I::SettingsChangeDays,I::SettingsChangeTrackingDesc);

@@ -294,6 +294,9 @@ void OpenGroupWheel(AppState& s) {
     data.scroll_text = l10n::Get(l10n::StringId::GroupWheelScroll);
     data.apply_text = l10n::Get(l10n::StringId::GroupWheelApply);
     data.cancel_text = l10n::Get(l10n::StringId::Cancel);
+    if (!multi && !recent && !tab->content_results && !tab->current_path.empty() &&
+        !fs::IsVirtualPath(tab->current_path))
+        data.apply_all_text = l10n::Get(l10n::StringId::ApplyGroupAllShort);
 
     const float width = static_cast<float>(s.compositor.Width());
     const float height = static_cast<float>(s.compositor.Height());
@@ -416,6 +419,14 @@ bool GroupWheelMessage(AppState& s, HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
             Kick(s, hwnd);
             return true;
         }
+        if (g_kind == WheelKind::Group && wheel.HitApplyAll(x, y)) {
+            const int value = wheel.SelectedValue();
+            wheel.Close();
+            Kick(s, hwnd);
+            ApplyGroupToAllFolders(s, value);
+            Kick(s, hwnd);
+            return true;
+        }
         if (wheel.PointerDown(x, y)) SetCapture(hwnd);
         Kick(s, hwnd);
         return true;
@@ -425,6 +436,7 @@ bool GroupWheelMessage(AppState& s, HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
             Kick(s, hwnd);
             return true;
         }
+        if (wheel.HoverApplyAll(x, y)) Kick(s, hwnd);
         return wheel.Contains(x, y);
     case WM_LBUTTONUP:
         if (wheel.Dragging()) {

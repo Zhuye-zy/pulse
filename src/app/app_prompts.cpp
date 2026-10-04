@@ -1,0 +1,91 @@
+#include "../common/windows_compat.h"
+#include "app_prompts.h"
+
+#include "app_state.h"
+#include "../common/localization.h"
+#include "../ui/confirm_dialog.h"
+
+#include <cwchar>
+#include <string>
+
+namespace pulse {
+namespace {
+
+std::wstring Text(l10n::StringId id) { return l10n::Get(id); }
+
+ui::ConfirmChoice Ask(AppState& s, const ui::ConfirmDialogSpec& spec) {
+    return ui::ShowConfirmDialogEx(s.hwnd, spec, s.darkMode, s.accentColor);
+}
+
+// Older prompt strings carry their own paragraph breaks.
+std::wstring TrimBreaks(std::wstring text) {
+    while (!text.empty() && (text.front() == L'\n' || text.front() == L'\r')) text.erase(0, 1);
+    return text;
+}
+
+} // namespace
+
+bool ConfirmClearRecent(AppState& s) {
+    ui::ConfirmDialogSpec spec;
+    spec.title = Text(l10n::StringId::ClearRecentTitle);
+    spec.message = Text(l10n::StringId::ClearRecentPrompt);
+    spec.confirm_text = Text(l10n::StringId::ClearAll);
+    spec.danger = true;
+    spec.default_choice = ui::ConfirmChoice::Cancel;
+    return Ask(s, spec) == ui::ConfirmChoice::Confirm;
+}
+
+bool ConfirmClearDiagnostics(AppState& s) {
+    ui::ConfirmDialogSpec spec;
+    spec.title = Text(l10n::StringId::ClearDiagnostics);
+    spec.message = Text(l10n::StringId::DiagnosticsClearConfirm);
+    spec.confirm_text = Text(l10n::StringId::ClearDiagnostics);
+    spec.danger = true;
+    spec.default_choice = ui::ConfirmChoice::Cancel;
+    return Ask(s, spec) == ui::ConfirmChoice::Confirm;
+}
+
+bool ConfirmDiagnosticsExport(AppState& s, bool& include_service) {
+    ui::ConfirmDialogSpec privacy;
+    privacy.title = Text(l10n::StringId::DiagnosticsPrivacyTitle);
+    privacy.message = Text(l10n::StringId::DiagnosticsPrivacyMessage);
+    privacy.confirm_text = Text(l10n::StringId::ConfirmContinue);
+    privacy.tone = ui::ConfirmTone::Warning;
+    privacy.default_choice = ui::ConfirmChoice::Cancel;
+    if (Ask(s, privacy) != ui::ConfirmChoice::Confirm) return false;
+
+    ui::ConfirmDialogSpec service;
+    service.title = Text(l10n::StringId::DiagnosticsPrivacyTitle);
+    service.message = Text(l10n::StringId::DiagnosticsIncludeService);
+    service.confirm_text = Text(l10n::StringId::DiagnosticsIncludeServiceYes);
+    service.secondary_text = Text(l10n::StringId::DiagnosticsIncludeServiceNo);
+    service.tone = ui::ConfirmTone::Question;
+    service.glyph = L"\xE7EF";  // Admin (shield)
+    service.default_choice = ui::ConfirmChoice::Secondary;
+    const ui::ConfirmChoice choice = Ask(s, service);
+    if (choice == ui::ConfirmChoice::Cancel) return false;
+    include_service = choice == ui::ConfirmChoice::Confirm;
+    return true;
+}
+
+bool AskRetryRecovery(AppState& s, size_t count, bool uncertain_destructive, bool duplicate_cleanup) {
+    ui::ConfirmDialogSpec spec;
+    spec.title = Text(l10n::StringId::RecoveryTitle);
+    wchar_t message[512]{};
+    swprintf_s(message, Text(l10n::StringId::RecoveryPromptFormat).c_str(), count);
+    spec.message = message;
+    if (uncertain_destructive) spec.note = TrimBreaks(Text(l10n::StringId::RecoveryDestructiveWarning));
+    if (duplicate_cleanup) {
+        if (!spec.note.empty()) spec.note += L"\n";
+        spec.note += l10n::Pick(L"重复文件清理不会恢复，请重新扫描。",
+                                L"Duplicate cleanup will not be resumed. Please scan again.");
+    }
+    spec.confirm_text = Text(l10n::StringId::RecoveryRetry);
+    spec.cancel_text = Text(l10n::StringId::RecoveryDiscard);
+    spec.tone = ui::ConfirmTone::Warning;
+    spec.glyph = L"\xE777";  // UpdateRestore
+    spec.default_choice = ui::ConfirmChoice::Cancel;
+    return Ask(s, spec) == ui::ConfirmChoice::Confirm;
+}
+
+} // namespace pulse

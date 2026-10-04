@@ -14,6 +14,8 @@
 //   RealDelete    -> never recorded, not undoable.
 #pragma once
 #include <windows.h>
+#include "file_lock_owner.h"
+#include "duplicate_cleanup_guard.h"
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -57,6 +59,14 @@ struct OpRequest {
     std::vector<std::wstring> new_names; // BatchRename, parallel to sources
     CollisionPolicy collision_policy = CollisionPolicy::System; // Copy / Move
     bool is_undo = false;     // undo-originated ops do not re-enter the stack
+    // Lock retry only: end these processes first (never journaled, so a
+    // recovered operation cannot terminate anything).
+    std::vector<LockOwner> close_first;
+    // Retry of a locked-file failure (with or without ending processes): the
+    // failed attempt may have handled part of the selection already.
+    bool lock_retry = false;
+    bool duplicate_cleanup = false;
+    std::vector<DuplicateCleanupGroup> duplicate_groups;
 };
 
 struct UndoEntry {
@@ -87,6 +97,9 @@ struct OpStatus {
     double peak_bytes_per_second = 0.0;
     uint64_t eta_seconds = 0;
     uint64_t completed_ops = 0; // bumped on every finished op (UI edge detect)
+    // Failed because other processes hold the item (Restart Manager result).
+    std::wstring locked_path;
+    std::vector<LockOwner> lock_owners;
 };
 
 struct CompletedOperation {
@@ -143,11 +156,18 @@ public:
     HWND UiWindow() const noexcept { return ui_hwnd_.load(); }
 
     uint64_t Submit(OpRequest req);
+    // Atomically reject shutdown when work is queued/running and stop new submissions.
+    bool TryPrepareForUpdate();
+    void CancelUpdatePreparation();
     void CancelCurrent();
     void PauseCurrent();
     void ResumeCurrent();
     std::optional<ConflictItemInfo> PendingConflict() const;
     void ResolveConflict(uint64_t token, ConflictChoice choice, bool apply_to_all);
+    // Re-queue the operation that failed on a locked item (status.task_id).
+    // close_owners = end the closable lock owners on the worker first. Items
+    // that are already gone are skipped for delete/move.
+    bool RetryLockedOperation(uint64_t task_id, bool close_owners);
 
     // Double-click open: ShellExecuteEx on a dedicated open thread (plan §6.2).
     void OpenWith(const std::wstring& path);
@@ -241,6 +261,9 @@ private:
     void RunShellOp(const OpRequest& req, uint64_t task_id);
     bool WaitShellDone(uint32_t id, uint32_t& hr, bool& cancelled, std::wstring& error);
     void RunTransfer(const OpRequest& req, uint64_t task_id);
+    LockReport ProbeLock(const OpRequest& req, uint64_t task_id, HRESULT hr,
+                         const std::wstring& error);
+    bool PrepareLockRetry(OpRequest& req, uint64_t task_id);
     void SetStatus(const std::function<void(OpStatus&)>& fn);
     void PushUndo(const OpRequest& req,
                   const std::vector<std::wstring>* actual_destinations = nullptr);
@@ -258,6 +281,14 @@ private:
     std::deque<QueueItem> queue_;
     std::deque<std::wstring> recovery_cleanup_roots_;
     std::optional<QueueItem> active_item_;
+    bool update_preparing_ = false;
+    bool recovery_cleanup_active_ = false;
+    struct LockRetry {
+        uint64_t task_id = 0;
+        OpRequest req;
+        std::vector<LockOwner> owners;
+    };
+    std::optional<LockRetry> lock_retry_;   // guarded by mutex_
     std::vector<RecoveryEntry> pending_recovery_;
     std::wstring journal_path_;
     OpStatus status_;
@@ -300,6 +331,7 @@ private:
     mutable std::mutex menu_mutex_;
     std::condition_variable menu_cv_;
     std::deque<MenuJob> menu_queue_;
+    bool menu_dispatching_ = false;
     ShellMenuCallback menu_cb_;
     uint32_t next_menu_token_ = 1;
     std::map<uint32_t, uint32_t> menu_session_by_token_;  // token -> query req id

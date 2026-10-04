@@ -27,7 +27,8 @@ void ApplyGlobalSearchSettings(AppState& s) {
         s.globalSearchHotkey.Error() == ERROR_HOTKEY_ALREADY_REGISTERED
             ? l10n::StringId::GlobalSearchConflict : l10n::StringId::GlobalSearchRegisterFailed));
     if (!enabled || !ok) s.globalSearchWindow.Hide();
-    s.tray_controller.SetVisible(s.appPrefs.keep_running_on_close || enabled);
+    s.tray_controller.SetVisible(app::TrayIconWanted(s.appPrefs.keep_running_on_close || enabled,
+                                                     s.appPrefs.notify_icon_mode, s.hidden_to_tray));
     InvalidateRect(s.hwnd, nullptr, FALSE);
 }
 

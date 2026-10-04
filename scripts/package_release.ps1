@@ -27,7 +27,7 @@ if ($CodeSigningThumbprint -notmatch '^[0-9A-Fa-f]{40}$') {
 if ($LASTEXITCODE -ne 0) { throw "Release build failed" }
 
 $signTool = (Get-Command signtool.exe -ErrorAction Stop).Source
-$binaries = @("pulse.exe", "Pulse.Index.exe", "Pulse.Document.exe", "Pulse.Preview.exe", "pulse_shell.exe")
+$binaries = @("pulse.exe", "Pulse.Index.exe", "Pulse.Document.exe", "Pulse.Preview.exe", "pulse_shell.exe", "pulse_integration.exe")
 foreach ($name in $binaries) {
     $path = Join-Path $buildPath $name
     if (-not (Test-Path -LiteralPath $path)) { throw "Missing release binary: $path" }

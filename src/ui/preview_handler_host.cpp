@@ -22,6 +22,9 @@
 using Microsoft::WRL::ComPtr;
 
 namespace pulse::ui {
+#ifdef PULSE_PREVIEW_HANDLER_TESTING
+IUnknown* (*g_preview_handler_factory_for_test)() = nullptr;
+#endif
 namespace {
 
 constexpr wchar_t kClassName[] = L"PulsePreviewHandlerHost";
@@ -187,6 +190,9 @@ bool IsOfflinePlaceholder(DWORD attrs) {
 }
 
 bool FindPreviewHandlerClsid(const std::wstring& extension, CLSID& clsid) {
+#ifdef PULSE_PREVIEW_HANDLER_TESTING
+    if (g_preview_handler_factory_for_test) { clsid = GUID_NULL; return true; }
+#endif
     static std::unordered_map<std::wstring, CLSID> cache;
     // A lookup that found nothing is remembered, but only for a while: the shell
     // can fail this query while it is busy with something else, and carrying
@@ -255,6 +261,13 @@ void EvictFactory(const CLSID& clsid) {
 }
 
 ComPtr<IUnknown> CreateHandler(const CLSID& clsid) {
+#ifdef PULSE_PREVIEW_HANDLER_TESTING
+    if (g_preview_handler_factory_for_test) {
+        ComPtr<IUnknown> handler;
+        handler.Attach(g_preview_handler_factory_for_test());
+        return handler;
+    }
+#endif
     for (int attempt = 0; attempt < 2; ++attempt) {
         ComPtr<IClassFactory> factory = FactoryFor(clsid);
         if (factory) {
@@ -488,8 +501,15 @@ struct PreviewHandlerHost::WorkerState {
         shown = false;
     }
 
-    bool OpenCurrent() {
+    bool IsCurrent(const std::wstring& opening_identity) {
+        std::lock_guard<std::mutex> lock(mutex);
+        return !stop && command.enabled && command.owner == owner &&
+            command.identity == opening_identity;
+    }
+
+    bool OpenCurrent(const std::wstring& opening_identity) {
         Unload();
+        HideWindow();
         {
             std::lock_guard<std::mutex> lock(mutex);
             provider_path = path;
@@ -503,7 +523,7 @@ struct PreviewHandlerHost::WorkerState {
             if (delay > 0) Sleep(static_cast<DWORD>(std::min(delay, 10000)));
         }
 #endif
-        if (path.empty() || !EnsureWindow()) return false;
+        if (path.empty() || !IsCurrent(opening_identity) || !EnsureWindow()) return false;
         CLSID clsid{};
         if (!FindPreviewHandlerClsid(ExtensionOf(path), clsid)) return false;
         ComPtr<IUnknown> unknown = CreateHandler(clsid);
@@ -525,7 +545,9 @@ struct PreviewHandlerHost::WorkerState {
             return false;
         }
         handler = unknown.Detach();
-        shown = true;
+        if (!IsCurrent(opening_identity)) { Unload(); return false; }
+        // Keep the parent hidden throughout provider initialization. A slow
+        // SetWindow/DoPreview must never make an obsolete request visible.
         PlaceOverlay();
         pan.Disable();
         RECT client{};
@@ -536,13 +558,19 @@ struct PreviewHandlerHost::WorkerState {
             HideWindow();
             return false;
         }
-        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-        if (FAILED(preview->DoPreview())) {
+        if (!IsCurrent(opening_identity) || FAILED(preview->DoPreview())) {
             Unload();
             HideWindow();
             return false;
         }
         preview->SetRect(&client);
+        if (!IsCurrent(opening_identity)) {
+            Unload();
+            HideWindow();
+            return false;
+        }
+        shown = true;
+        PlaceOverlay();
         // Office handlers may paint directly into the host. Wake their child
         // windows without erasing the pixels DoPreview has already produced.
         RedrawWindow(hwnd, nullptr, nullptr,
@@ -956,7 +984,7 @@ DWORD WINAPI PreviewHandlerHost::WorkerMain(void* parameter) {
             self->open_started_tick.store(GetTickCount64(), std::memory_order_release);
             self->opens_started.fetch_add(1, std::memory_order_release);
 
-            const bool opened = self->OpenCurrent();
+            const bool opened = self->OpenCurrent(opening_identity);
             self->opens_finished.fetch_add(1, std::memory_order_release);
             if (opened) ClearSlowProvider(ExtensionOf(self->path));
             bool current = false;

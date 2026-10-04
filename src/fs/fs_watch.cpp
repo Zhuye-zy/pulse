@@ -43,40 +43,77 @@ std::vector<DirNotifyEvent> ParseNotifyBuffer(const BYTE* data, DWORD bytes,
 
 } // namespace
 
-DirWatch::DirWatch() {
-    hStop_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-}
+namespace { std::atomic<unsigned> active_watchers{0}; }
 
-DirWatch::~DirWatch() {
-    Stop();
-    if (hStop_) CloseHandle(hStop_);
-}
+struct DirWatch::State {
+    std::wstring path_;
+    bool subtree_ = false;
+    ChangeCallback callback_;
+    std::mutex callback_mutex_;
+    std::atomic<HANDLE> hDir_{INVALID_HANDLE_VALUE};
+    HANDLE hStop_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    std::atomic<bool> running_{true};
+    std::atomic<bool> armed_{false};
+    OVERLAPPED overlapped_{};
+    BY_HANDLE_FILE_INFORMATION identity_{};
+    bool identity_valid_ = false;
+    std::wstring pending_rename_old_;
+    DWORD buffer_[64 * 1024 / sizeof(DWORD)]{};
+    ~State() {
+        const HANDLE directory = hDir_.load();
+        if (directory != INVALID_HANDLE_VALUE) CloseHandle(directory);
+        if (hStop_) CloseHandle(hStop_);
+        --active_watchers;
+    }
+    static HANDLE OpenDirectory(const std::wstring& path);
+    static bool ReadIdentity(HANDLE handle, BY_HANDLE_FILE_INFORMATION& identity);
+    bool WatchedPathReplaced() const;
+    bool ReopenDirectory();
+    void Notify(bool overflow, std::vector<DirNotifyEvent> events);
+    void WorkerThread();
+};
+
+DirWatch::DirWatch() = default;
+DirWatch::~DirWatch() { Stop(); }
 
 bool DirWatch::Start(const std::wstring& path, ChangeCallback cb, bool subtree) {
     Stop();
     if (path.empty()) return false;
+    // Bound retired workers even when a network provider ignores cancellation.
+    if (active_watchers.fetch_add(1) >= 128) { --active_watchers; return false; }
+    std::shared_ptr<State> state;
+    try { state = std::make_shared<State>(); }
+    catch (...) { --active_watchers; return false; }
+    if (!state->hStop_) return false;
     path_ = NormalizePath(path);
-    subtree_ = subtree;
-    callback_ = std::move(cb);
-    ResetEvent(hStop_);
-    running_ = true;
-    thread_ = std::thread(&DirWatch::WorkerThread, this);
+    state->path_ = path_;
+    state->subtree_ = subtree;
+    state->callback_ = std::move(cb);
+    try { thread_ = std::thread([state] { state->WorkerThread(); }); }
+    catch (...) { return false; }
+    state_ = std::move(state);
     return true;
 }
 
+bool DirWatch::Armed() const { return state_ && state_->armed_.load(); }
+
 void DirWatch::Stop() {
-    running_ = false;
-    if (hStop_) SetEvent(hStop_);
-    const HANDLE directory = hDir_.load(std::memory_order_acquire);
-    if (directory != INVALID_HANDLE_VALUE) CancelIoEx(directory, nullptr);
-    if (thread_.joinable()) thread_.join();
-    const HANDLE closed = hDir_.exchange(INVALID_HANDLE_VALUE, std::memory_order_acq_rel);
-    if (closed != INVALID_HANDLE_VALUE) CloseHandle(closed);
-    identity_valid_ = false;
-    pending_rename_old_.clear();
+    if (!state_) return;
+    state_->running_ = false;
+    SetEvent(state_->hStop_);
+    {
+        // Callbacks only dispatch notifications. Quiesce them before owners die.
+        std::lock_guard lock(state_->callback_mutex_);
+        state_->callback_ = {};
+    }
+    if (thread_.joinable()) {
+        CancelSynchronousIo(thread_.native_handle());
+        thread_.detach();
+    }
+    state_.reset(); // The worker owns handles and pending OVERLAPPED until drained.
 }
 
-HANDLE DirWatch::OpenDirectory(const std::wstring& path) {
+HANDLE DirWatch::State::OpenDirectory(const std::wstring& path) {
     return CreateFileW(
         path.c_str(),
         FILE_LIST_DIRECTORY,
@@ -87,12 +124,12 @@ HANDLE DirWatch::OpenDirectory(const std::wstring& path) {
         nullptr);
 }
 
-bool DirWatch::ReadIdentity(HANDLE handle, BY_HANDLE_FILE_INFORMATION& identity) {
+bool DirWatch::State::ReadIdentity(HANDLE handle, BY_HANDLE_FILE_INFORMATION& identity) {
     return handle != INVALID_HANDLE_VALUE &&
            GetFileInformationByHandle(handle, &identity) != FALSE;
 }
 
-bool DirWatch::WatchedPathReplaced() const {
+bool DirWatch::State::WatchedPathReplaced() const {
     if (!identity_valid_) return false;
     HANDLE current = OpenDirectory(path_);
     if (current == INVALID_HANDLE_VALUE) return true;
@@ -105,7 +142,8 @@ bool DirWatch::WatchedPathReplaced() const {
            identity.nFileIndexLow != identity_.nFileIndexLow;
 }
 
-bool DirWatch::ReopenDirectory() {
+bool DirWatch::State::ReopenDirectory() {
+    armed_ = false;
     const HANDLE old = hDir_.exchange(INVALID_HANDLE_VALUE, std::memory_order_acq_rel);
     if (old != INVALID_HANDLE_VALUE) CloseHandle(old);
     identity_valid_ = false;
@@ -127,15 +165,16 @@ bool DirWatch::ReopenDirectory() {
     return false;
 }
 
-void DirWatch::Notify(bool overflow, std::vector<DirNotifyEvent> events) const {
-    if (!callback_) return;
+void DirWatch::State::Notify(bool overflow, std::vector<DirNotifyEvent> events) {
+    std::lock_guard lock(callback_mutex_);
+    if (!running_ || !callback_) return;
     try {
         callback_(overflow, std::move(events));
     } catch (...) {
     }
 }
 
-void DirWatch::WorkerThread() {
+void DirWatch::State::WorkerThread() {
     if (!ReopenDirectory()) return;
     bool newly_armed = true;
     while (running_) {
@@ -175,9 +214,10 @@ void DirWatch::WorkerThread() {
             continue;
         }
 
-        // An initial/reopened recursive watch may have missed changes while
+        // An initial/reopened watch may have missed changes while
         // the handle was opening. Reconcile only after the read is armed.
-        if (subtree_ && newly_armed) Notify(true, {});
+        armed_ = true;
+        if (newly_armed) Notify(true, {});
         newly_armed = false;
 
         bool replaced = false;

@@ -45,7 +45,7 @@ void StartDuplicateScan(AppState& s) {
     const auto& volumes = s.dup_volume_cache;
     if (session.scope == app::DuplicateScanScope::Folder && session.folder_path.empty()) {
         std::wstring path;
-        if (!PickFolder(s.hwnd, path, l10n::Get(l10n::StringId::DupFolderPlaceholder).c_str()))
+        if (!PickFolder(s, path, l10n::Get(l10n::StringId::DupFolderPlaceholder).c_str()))
             return;
         session.folder_path = std::move(path);
     }
@@ -83,20 +83,14 @@ void CancelDuplicateScan(AppState& s) {
 }
 
 void RecycleDuplicateGroup(AppState& s, size_t group) {
-    auto paths = s.duplicateScan.FilesToDelete(group);
-    if (paths.empty()) return;
     ops::OpRequest req;
-    req.type = ops::OpType::RecycleDelete;
-    req.sources = std::move(paths);
+    if (!s.duplicateScan.BuildCleanupRequest(req, group)) return;
     s.ops.Submit(std::move(req));
 }
 
 void RecycleAllDuplicateExtras(AppState& s) {
-    auto paths = s.duplicateScan.AllFilesToDelete();
-    if (paths.empty()) return;
     ops::OpRequest req;
-    req.type = ops::OpType::RecycleDelete;
-    req.sources = std::move(paths);
+    if (!s.duplicateScan.BuildCleanupRequest(req)) return;
     s.ops.Submit(std::move(req));
 }
 

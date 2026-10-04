@@ -20,7 +20,7 @@ $artifacts = @(
     "Pulse.Index.exe", "Pulse.Index.pdb",
     "Pulse.Document.exe", "Pulse.Document.pdb",
     "Pulse.Preview.exe", "Pulse.Preview.pdb",
-    "pulse_shell.exe", "pulse_shell.pdb"
+    "pulse_shell.exe", "pulse_integration.exe", "pulse_shell.pdb", "pulse_integration.pdb"
 )
 $manifest = @()
 foreach ($name in $artifacts) {

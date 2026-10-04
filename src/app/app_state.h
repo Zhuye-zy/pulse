@@ -19,6 +19,7 @@
 #include <deque>
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include "content_results_ui.h"
 #include "app_worker.h"
 #include "places.h"
@@ -28,6 +29,8 @@
 #include "context_menu_controller.h"
 #include "shell_verbs.h"
 #include "app_prefs.h"
+#include "explorer_window_takeover.h"
+#include "shell_window_registry.h"
 #include "saved_search.h"
 #include "search_history.h"
 #include "settings_controller.h"
@@ -92,6 +95,11 @@ constexpr UINT WM_UPDATE_INSTALL = WM_APP + 61;
 constexpr UINT WM_SEARCH_HISTORY = WM_APP + 62;
 constexpr UINT WM_CHANGE_TRACKING = WM_APP + 63;
 constexpr UINT WM_FRAME_PUMP = WM_APP + 67;  // app::FramePump: one display frame of motion
+constexpr UINT WM_SHELL_SELECT = WM_APP + 68;  // app::ShellSelectRequest* (shell_window_sync.h)
+constexpr UINT WM_EXPLORER_TAKEOVER = WM_APP + 69;  // app::ExplorerTakeoverRequest* (shell_window_sync.h)
+constexpr UINT WM_NETWORK_LIVE_SEARCH = WM_APP + 71;  // shared_ptr<LiveNetworkSearch>* (#74 live walk progressed)
+constexpr UINT WM_SHELL_VERB_SEED = WM_APP + 70;
+constexpr UINT WM_EXIT_PULSE = WM_APP + 72;  // palette "Exit Pulse" (#57)  // ShellVerbSeed* (machine verb cache read off the UI thread)
 constexpr UINT kTimerUi = 1;
 
 enum class OmnibarMode { Path, Mixed, Command, Project };
@@ -144,6 +152,17 @@ struct TrayCompareJob {
 struct TrayTextProbe {
     std::wstring a, b;
     std::atomic<int> state{0}; // 0 running, 1 both text, 2 binary / unreadable
+};
+
+// #74: live walk of an unindexed network search scope. Reused for later pages
+// and re-sorts of the same query; F5 or a finished file operation drops it.
+struct LiveNetworkSearch {
+    std::wstring key;
+    std::wstring folder;
+    std::mutex mutex;
+    index::LiveNetworkMatches matches;  // guarded by mutex
+    std::atomic<bool> cancel{false};
+    std::atomic<uint32_t> latest_id{0};  // newest request answered from this walk
 };
 
 struct AppState {
@@ -256,8 +275,10 @@ struct AppState {
         index::SearchResult network;
         bool local_ready = false;
         bool network_ready = false;
+        std::wstring live_network_root;  // #74: scope walked live instead of the network index
     };
     std::unordered_map<uint32_t, PendingIndexSearch> pendingIndexSearches;
+    std::shared_ptr<LiveNetworkSearch> liveNetworkSearch;
     std::vector<index::Hit> paletteHits;
     size_t paletteTotal = 0;
     std::wstring paletteQuery;
@@ -270,6 +291,8 @@ struct AppState {
     HWND advancedCountHwnd = nullptr;
     // Session autosave: last written JSON, so unchanged state is never rewritten.
     std::wstring sessionSavedJson;
+    bool updateSessionPrepared = false;
+    bool restoreUpdateSession = false;
     std::wstring prefsSavedJson;
     ULONGLONG sessionAutosaveCheck = 0;
     uint32_t nextIndexReq = 1;
@@ -467,6 +490,7 @@ struct AppState {
     uint64_t operationUiTaskId = 0;
     uint64_t operationDismissedTaskId = 0;
     uint64_t conflictUiToken = 0;
+    uint64_t lockPromptTaskId = 0;   // failed op whose "file in use" prompt was shown
     bool operationAutoShown = false;
     bool operationPinnedByUser = false;
     std::chrono::steady_clock::time_point operationStartedAt{};
@@ -518,6 +542,10 @@ struct AppState {
     std::shared_ptr<TrayCompareJob> trayCmpJob; // on-demand byte comparison
     std::shared_ptr<TrayTextProbe> trayTextProbe; // text/binary probe for "view diff"
     std::unique_ptr<ui::TextDiffWindow> textDiff; // stand-alone text compare window
+    // Panes as shell windows for "open file location" (shell_window_sync.h).
+    std::unique_ptr<app::ShellWindowRegistry> shell_windows;
+    std::vector<app::ShellWindowEntry> shell_windows_published;
+    std::unique_ptr<app::ExplorerWindowTakeover> explorer_takeover;   // experimental (B站 #1 2b)
     // One-time teaching bubbles (tips_seen bits in appPrefs).
     int teachTip = -1;                 // visible tip, -1 = none
     int teachCandidate = -1;           // trigger currently holding
@@ -584,6 +612,9 @@ struct AppState {
     // Set when the press came from a header-less section's own row (starred root,
     // OneDrive account): a plain click navigates there instead of folding.
     std::wstring groupDragPath;
+    // The press came from a navigable header's title (#80): a plain click opens
+    // groupDragPath even when it is empty (This PC).
+    bool groupDragNavigate = false;
 
     // Quick-access pin drag: pinned folders reorder inside the section.
     bool pinDragPending = false;
@@ -732,6 +763,14 @@ struct AppState {
 struct ShellVerbsResult {
     std::wstring ext;
     std::vector<app::StaticVerb> verbs;
+    uint32_t generation = 0;  // ContextMenuController::cache_generation() at request time
+};
+
+// WM_SHELL_VERB_SEED heap payload: the machine-wide verb cache, parsed on the
+// seeding thread. Stale generations are dropped (a registry change re-seeds).
+struct ShellVerbSeed {
+    uint32_t generation = 0;
+    std::unordered_map<std::wstring, std::vector<app::StaticVerb>> machine;
 };
 
 struct ShellCtxItemsPayload {

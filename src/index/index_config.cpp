@@ -22,12 +22,15 @@ bool EnsureDirectory(const std::wstring& path) {
         (attributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
 }
 
-bool EnsureMachineDirectory(const std::wstring& path) {
+bool EnsureMachineDirectory(const std::wstring& path, bool user_readable = true) {
     PSECURITY_DESCRIPTOR descriptor = nullptr;
     // SYSTEM + Administrators full; Authenticated Users can list/read (logs,
     // diagnostics). Protected DACL still blocks unintended ProgramData inherit.
+    // Index data lists every name on the indexed volumes, so it is never
+    // user-readable; users query it through the filtered pipe instead (#66).
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            L"O:BAG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;AU)",
+            user_readable ? L"O:BAG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;AU)"
+                          : L"O:BAG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)",
             SDDL_REVISION_1, &descriptor, nullptr))
         return false;
 
@@ -236,8 +239,30 @@ std::wstring MachineIndexRoot() {
     const std::wstring pulse = MachineDataRoot();
     if (pulse.empty()) return {};
     const std::wstring index = pulse + L"\\Index";
-    if (!EnsureMachineDirectory(index)) return {};
+    if (!EnsureMachineDirectory(index, false)) return {};
     return index;
+}
+
+bool ProtectIndexDirectory(const std::wstring& path) {
+    // A chosen folder that already holds other files keeps its ACL: a new
+    // protected DACL would propagate to everything inside it.
+    if (path.size() <= 3) return false;
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY) ||
+        (attributes & FILE_ATTRIBUTE_REPARSE_POINT))
+        return false;
+    WIN32_FIND_DATAW entry{};
+    HANDLE find = FindFirstFileExW((path + L"\\*").c_str(), FindExInfoBasic, &entry,
+                                   FindExSearchNameMatch, nullptr, 0);
+    if (find != INVALID_HANDLE_VALUE) {
+        bool empty = true;
+        do {
+            if (wcscmp(entry.cFileName, L".") != 0 && wcscmp(entry.cFileName, L"..") != 0) empty = false;
+        } while (empty && FindNextFileW(find, &entry));
+        FindClose(find);
+        if (!empty) return false;
+    }
+    return EnsureMachineDirectory(path, false);
 }
 
 std::wstring UserIndexRoot() {
@@ -346,6 +371,7 @@ bool ConfigureIndexPath(const std::wstring& path, std::wstring* error) {
         SetError(error, Win32Error(L"无法创建索引目录"));
         return false;
     }
+    (void)ProtectIndexDirectory(path);  // new or empty folders only
     IndexConfig config;
     if (!LoadMachineConfig(config, error)) return false;
     config.index_path = path;

@@ -2,7 +2,7 @@
 #include <cstdint>
 
 namespace pulse::app {
-enum class UpdatePhase { Idle, Connecting, Downloading, Verifying, Ready, Launching, Installing };
+enum class UpdatePhase { Idle, Connecting, Downloading, Verifying, Ready, WaitingOperations, Launching, Installing };
 struct UpdateProgress {
     UpdatePhase phase = UpdatePhase::Idle;
     uint64_t received_bytes = 0;

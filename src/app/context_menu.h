@@ -110,6 +110,8 @@ enum MenuCmd : int {
     CmdGroupLocation = 192,     // = CmdGroupNone + GroupBy::Location
     CmdRestoreAllRecycle = 193, // recycle background: restore every listed item
     CmdApplyViewToAllFolders = 194, // view menu: this view + sort become every folder's default
+    CmdApplyGroupToAllFolders = 195, // group menu: this grouping becomes every folder's default (#75)
+    CmdExitPulse = 196,         // palette: quit even when closing keeps Pulse running (#57)
     CmdRecentBase = 200,
     CmdIndexBase = 1000,
     // Explorer integration (优化.md §7): registry static verbs bound to the
@@ -183,6 +185,7 @@ struct BackgroundViewOptions {
     int group_by = 0;        // app::GroupBy value
     bool can_group = false;  // real folders, Recent, search results, tag views
     bool group_virtual = false; // multi-folder view (search, tag, recycle): Location instead of Tag
+    bool can_apply_group_all = false; // real folder: offer "apply grouping to all folders"
 };
 void AppendBackgroundViewCommands(std::vector<ui::FluentMenuItem>& items,
                                   const BackgroundViewOptions& options);

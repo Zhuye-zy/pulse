@@ -148,15 +148,9 @@ private:
         return 0;
     }
 
-    D2D1_COLOR_F EditForeground() const {
-        return dark_ ? D2D1::ColorF(1.0f, 1.0f, 1.0f)
-                     : D2D1::ColorF(26.0f / 255.0f, 26.0f / 255.0f, 26.0f / 255.0f);
-    }
+    D2D1_COLOR_F EditForeground() const { return ColorFromRef(EditTextColor(dark_)); }
 
-    D2D1_COLOR_F EditBackground() const {
-        return dark_ ? D2D1::ColorF(30.0f / 255.0f, 30.0f / 255.0f, 30.0f / 255.0f)
-                     : D2D1::ColorF(1.0f, 1.0f, 1.0f);
-    }
+    D2D1_COLOR_F EditBackground() const { return ColorFromRef(EditBackColor(dark_)); }
 
     HWND CreateField(int id, const std::wstring& text, bool number = false) {
         HWND edit = CreateChildEdit(hwnd_, text.c_str(), number ? ES_NUMBER : 0);
@@ -245,7 +239,7 @@ private:
         LRESULT result = 0;
         if (!HandleChildEditMessage(self->compositor_, self->compositor_.TextFormat(),
                                     self->EditForeground(), self->EditBackground(),
-                                    self->edit_brush_, hwnd, msg, wparam, lparam, result)) {
+                                    EditBackBrush(self->edit_brush_), hwnd, msg, wparam, lparam, result)) {
             result = DefPresentedChildEditProc(self->compositor_, self->compositor_.TextFormat(),
                                                self->EditForeground(), self->EditBackground(),
                                                hwnd, msg, wparam, lparam);
@@ -518,9 +512,9 @@ private:
             return 0;
         case WM_CTLCOLOREDIT: {
             const HDC hdc = reinterpret_cast<HDC>(wparam);
-            SetTextColor(hdc, dark_ ? RGB(255, 255, 255) : RGB(26, 26, 26));
-            SetBkColor(hdc, dark_ ? RGB(30, 30, 30) : RGB(255, 255, 255));
-            return reinterpret_cast<LRESULT>(edit_brush_);
+            SetTextColor(hdc, EditTextColor(dark_));
+            SetBkColor(hdc, EditBackColor(dark_));
+            return reinterpret_cast<LRESULT>(EditBackBrush(edit_brush_));
         }
         case WM_COMMAND:
             if (HIWORD(wparam) == EN_CHANGE) {

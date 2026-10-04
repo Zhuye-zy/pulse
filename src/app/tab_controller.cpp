@@ -1,6 +1,7 @@
 #include "tab_controller.h"
 
 #include "context_menu.h"
+#include "last_tab_close.h"
 #include "../common/localization.h"
 
 #include <algorithm>
@@ -279,7 +280,10 @@ void TabController::ShowTabMenu(WindowTabs& tabs, int tab_index, POINT screen_pt
         items.back().separator_after = true;
     }
     items.push_back(MenuItem(CmdTabClose, TabText(Text::TabClose), L"\xE711"));
-    items.back().enabled = !tab.pinned && tabs.items.size() > 1;
+    const bool closes_window = LastTabClosesWindow(tabs.items.size(), tab.pinned,
+        callbacks_.last_tab_closes_window && callbacks_.close_window &&
+        callbacks_.last_tab_closes_window());
+    items.back().enabled = closes_window || (!tab.pinned && tabs.items.size() > 1);
     items.push_back(MenuItem(CmdTabCloseOthers, TabText(Text::TabCloseOthers)));
     items.push_back(MenuItem(CmdTabCloseRight, TabText(Text::TabCloseRight)));
 
@@ -334,7 +338,8 @@ void TabController::ShowTabMenu(WindowTabs& tabs, int tab_index, POINT screen_pt
         NormalizeGroupRuns(tabs);
         PruneEmptyGroups(tabs);
     } else if (command == CmdTabClose) {
-        CloseTabs(tabs, tab_index, tab_index);
+        if (closes_window) callbacks_.close_window();
+        else CloseTabs(tabs, tab_index, tab_index);
     } else if (command == CmdTabCloseOthers) {
         CloseTabs(tabs, 0, static_cast<int>(tabs.items.size()) - 1, tab_index);
     } else if (command == CmdTabCloseRight) {
